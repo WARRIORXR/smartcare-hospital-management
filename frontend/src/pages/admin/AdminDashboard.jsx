@@ -6,10 +6,12 @@
  */
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -27,7 +29,13 @@ const AdminDashboard = () => {
               Logged in as {user?.first_name || user?.username} (Administrator). Overview of all hospital systems.
             </p>
           </div>
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => navigate('/admin/manage')}
+              className="inline-flex items-center px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white text-sm font-bold shadow-md transition"
+            >
+              👨‍⚕️ Manage Doctors & Departments
+            </button>
             <a
               href="http://localhost:8000/admin/"
               target="_blank"

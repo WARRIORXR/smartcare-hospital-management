@@ -146,6 +146,18 @@ class Doctor(models.Model):
         help_text="Fee in Indian Rupees"
     )
 
+    room_number = models.CharField(
+        max_length=20,
+        blank=True,
+        default='Room 101',
+        help_text="OPD clinic room number e.g. Room 102"
+    )
+
+    avg_consult_minutes = models.PositiveIntegerField(
+        default=15,
+        help_text="Average consultation time in minutes"
+    )
+
     # Available days as a comma-separated string
     # e.g. "Mon,Tue,Wed,Thu,Fri"
     available_days = models.CharField(

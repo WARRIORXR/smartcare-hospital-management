@@ -6,11 +6,13 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import authService from '../../services/authService';
 
 const PatientDashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -99,12 +101,18 @@ const PatientDashboard = () => {
               Book a doctor consultation token and view live queue updates so you don't wait in long lines.
             </p>
           </div>
-          <div className="mt-6 pt-4 border-t border-gray-100">
+          <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
             <button
-              onClick={() => alert('OPD Token booking will be activated in Step 4!')}
-              className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 transition"
+              onClick={() => navigate('/patient/doctors')}
+              className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 transition shadow-xs"
             >
-              Book OPD Token
+              👨‍⚕️ View Doctor Directory & Rooms
+            </button>
+            <button
+              onClick={() => alert('OPD Token Queue booking will be activated in Step 5!')}
+              className="w-full py-1.5 px-4 rounded-lg bg-blue-50 text-blue-700 font-medium text-xs hover:bg-blue-100 transition"
+            >
+              Book OPD Token (Queue)
             </button>
           </div>
         </div>

@@ -17,6 +17,10 @@ import PatientDashboard from './pages/patient/PatientDashboard';
 import DoctorDashboard from './pages/doctor/DoctorDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 
+// Module Management & Directory Pages
+import AdminDoctorManagement from './pages/admin/AdminDoctorManagement';
+import DoctorList from './pages/patient/DoctorList';
+
 // Route Guard
 import ProtectedRoute from './components/common/ProtectedRoute';
 
@@ -54,6 +58,7 @@ function App() {
           {/* Protected Patient Routes */}
           <Route element={<ProtectedRoute allowedRoles={['patient']} />}>
             <Route path="/patient/dashboard" element={<PatientDashboard />} />
+            <Route path="/patient/doctors" element={<DoctorList />} />
           </Route>
 
           {/* Protected Doctor Routes */}
@@ -64,6 +69,7 @@ function App() {
           {/* Protected Admin Routes */}
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/manage" element={<AdminDoctorManagement />} />
           </Route>
 
           {/* Default Fallback Route */}

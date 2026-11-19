@@ -35,9 +35,9 @@ class DepartmentAdmin(admin.ModelAdmin):
 
 @admin.register(Doctor)
 class DoctorAdmin(admin.ModelAdmin):
-    list_display = ('user', 'department', 'specialization', 'experience_years', 'is_available')
+    list_display = ('user', 'department', 'specialization', 'room_number', 'avg_consult_minutes', 'experience_years', 'is_available')
     list_filter = ('department', 'is_available')
-    search_fields = ('user__first_name', 'user__last_name', 'specialization')
+    search_fields = ('user__first_name', 'user__last_name', 'specialization', 'room_number')
 
 
 @admin.register(Patient)
