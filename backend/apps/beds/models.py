@@ -193,6 +193,16 @@ class Admission(models.Model):
         related_name='admissions'
     )
 
+    # OPD Token from which admission was created (optional)
+    token = models.ForeignKey(
+        'opd.Token',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='admissions',
+        help_text="OPD Token from which patient was admitted"
+    )
+
     # Diagnosis / reason for admission
     diagnosis = models.TextField(
         blank=True,

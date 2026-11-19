@@ -17,6 +17,7 @@ class BedSerializer(serializers.ModelSerializer):
     ward_type = serializers.CharField(source='ward.ward_type', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     current_patient_name = serializers.SerializerMethodField()
+    current_admission_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Bed
@@ -32,6 +33,7 @@ class BedSerializer(serializers.ModelSerializer):
             'has_ventilator',
             'has_monitor',
             'current_patient_name',
+            'current_admission_id',
             'created_at',
             'updated_at',
         ]
@@ -43,6 +45,14 @@ class BedSerializer(serializers.ModelSerializer):
             admission = obj.admissions.filter(status='admitted').first()
             if admission and admission.patient and admission.patient.user:
                 return admission.patient.user.get_full_name() or admission.patient.user.username
+        return None
+
+    def get_current_admission_id(self, obj):
+        """If bed is occupied, return active admission ID."""
+        if obj.status == 'occupied':
+            admission = obj.admissions.filter(status='admitted').first()
+            if admission:
+                return admission.id
         return None
 
     def validate_bed_number(self, value):
@@ -113,9 +123,15 @@ class AdmissionSerializer(serializers.ModelSerializer):
     Serializer for Patient Admission into a Bed.
     """
     patient_name = serializers.SerializerMethodField()
+    patient_code = serializers.SerializerMethodField()
+    patient_phone = serializers.SerializerMethodField()
+    patient_gender = serializers.SerializerMethodField()
+    patient_blood_group = serializers.SerializerMethodField()
     bed_number = serializers.CharField(source='bed.bed_number', read_only=True)
     ward_name = serializers.CharField(source='bed.ward.name', read_only=True)
+    ward_type = serializers.CharField(source='bed.ward.ward_type', read_only=True)
     attending_doctor_name = serializers.SerializerMethodField()
+    token_code = serializers.CharField(source='token.token_code', read_only=True)
 
     class Meta:
         model = Admission
@@ -123,11 +139,18 @@ class AdmissionSerializer(serializers.ModelSerializer):
             'id',
             'patient',
             'patient_name',
+            'patient_code',
+            'patient_phone',
+            'patient_gender',
+            'patient_blood_group',
             'bed',
             'bed_number',
             'ward_name',
+            'ward_type',
             'attending_doctor',
             'attending_doctor_name',
+            'token',
+            'token_code',
             'diagnosis',
             'admission_date',
             'discharge_date',
@@ -143,7 +166,46 @@ class AdmissionSerializer(serializers.ModelSerializer):
             return obj.patient.user.get_full_name() or obj.patient.user.username
         return 'Unknown'
 
+    def get_patient_code(self, obj):
+        if obj.patient:
+            return getattr(obj.patient, 'patient_id', f"PAT-{obj.patient.id:04d}")
+        return 'N/A'
+
+    def get_patient_phone(self, obj):
+        if obj.patient and obj.patient.user:
+            return getattr(obj.patient.user, 'phone', 'N/A')
+        return 'N/A'
+
+    def get_patient_gender(self, obj):
+        if obj.patient:
+            return getattr(obj.patient, 'gender', 'N/A')
+        return 'N/A'
+
+    def get_patient_blood_group(self, obj):
+        if obj.patient:
+            return getattr(obj.patient, 'blood_group', 'N/A')
+        return 'N/A'
+
     def get_attending_doctor_name(self, obj):
         if obj.attending_doctor and obj.attending_doctor.user:
             return f"Dr. {obj.attending_doctor.user.get_full_name() or obj.attending_doctor.user.username}"
         return 'Not Assigned'
+
+
+class AutoAdmitSerializer(serializers.Serializer):
+    """
+    Serializer for admitting a patient with auto bed assignment.
+    """
+    token_id = serializers.IntegerField(required=False, allow_null=True)
+    patient_id = serializers.IntegerField(required=False, allow_null=True)
+    ward_type = serializers.ChoiceField(choices=Ward.WARD_TYPE_CHOICES, default='general')
+    diagnosis = serializers.CharField(required=True, allow_blank=False)
+    attending_doctor_id = serializers.IntegerField(required=False, allow_null=True)
+    preferred_ward_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class DischargeSerializer(serializers.Serializer):
+    """
+    Serializer for discharging an admitted patient.
+    """
+    discharge_notes = serializers.CharField(required=False, allow_blank=True, default='')

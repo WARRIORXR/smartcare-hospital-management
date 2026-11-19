@@ -28,7 +28,11 @@ from .serializers import (
     BedSerializer,
     BedStatusUpdateSerializer,
     AdmissionSerializer,
+    AutoAdmitSerializer,
+    DischargeSerializer,
 )
+from apps.accounts.models import Patient, Doctor
+from apps.opd.models import Token
 
 
 # ─────────────────────────────────────────────
@@ -238,8 +242,154 @@ class BedLiveOverviewView(APIView):
 
 
 # ─────────────────────────────────────────────
-# 4. Inpatient Admission & Discharge Views
+# 4. Inpatient Admission, Auto-Admit & Discharge Views
 # ─────────────────────────────────────────────
+class AutoAdmitPatientView(APIView):
+    """
+    POST /api/beds/admissions/auto-admit/
+    Doctor / Admin admits a patient (from an OPD token or directly).
+    System automatically assigns the first available bed of the chosen ward_type.
+    """
+    permission_classes = [CanManageBeds]
+
+    def post(self, request):
+        serializer = AutoAdmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        token_id = data.get('token_id')
+        patient_id = data.get('patient_id')
+        ward_type = data.get('ward_type')
+        diagnosis = data.get('diagnosis')
+        attending_doctor_id = data.get('attending_doctor_id')
+        preferred_ward_id = data.get('preferred_ward_id')
+
+        # 1. Resolve Patient
+        token = None
+        patient = None
+        if token_id:
+            token = get_object_or_404(Token, pk=token_id)
+            patient = token.patient
+            if not attending_doctor_id and token.doctor:
+                attending_doctor_id = token.doctor.id
+        elif patient_id:
+            patient = get_object_or_404(Patient, pk=patient_id)
+        else:
+            return Response(
+                {"error": "Either token_id or patient_id must be provided."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Check if patient is already actively admitted
+        existing_admission = Admission.objects.filter(patient=patient, status='admitted').first()
+        if existing_admission:
+            return Response(
+                {
+                    "error": f"Patient {patient.user.get_full_name() or patient.user.username} is already admitted to Bed {existing_admission.bed.bed_number} in {existing_admission.bed.ward.name}."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Resolve Doctor
+        attending_doctor = None
+        if attending_doctor_id:
+            attending_doctor = Doctor.objects.filter(pk=attending_doctor_id).first()
+        elif hasattr(request.user, 'doctor_profile'):
+            attending_doctor = request.user.doctor_profile
+
+        # 4. Auto-assign first available bed of selected type
+        available_beds_qs = Bed.objects.filter(
+            ward__ward_type=ward_type,
+            ward__is_active=True,
+            status='available'
+        ).select_related('ward').order_by('ward__floor_number', 'bed_number')
+
+        if preferred_ward_id:
+            assigned_bed = available_beds_qs.filter(ward_id=preferred_ward_id).first() or available_beds_qs.first()
+        else:
+            assigned_bed = available_beds_qs.first()
+
+        if not assigned_bed:
+            total_beds_count = Bed.objects.filter(ward__ward_type=ward_type).count()
+            occupied_count = Bed.objects.filter(ward__ward_type=ward_type, status='occupied').count()
+            return Response({
+                "error": f"No available beds in {ward_type.upper()} wards. All {total_beds_count} beds are currently occupied or being cleaned.",
+                "ward_type": ward_type,
+                "total_beds": total_beds_count,
+                "occupied_beds": occupied_count,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 5. Mark Bed Occupied
+        assigned_bed.status = 'occupied'
+        assigned_bed.save()
+
+        # 6. Create Admission record
+        admission = Admission.objects.create(
+            patient=patient,
+            bed=assigned_bed,
+            attending_doctor=attending_doctor,
+            token=token,
+            diagnosis=diagnosis,
+            status='admitted',
+        )
+
+        # 7. Update Token status if linked
+        if token:
+            token.status = 'admitted'
+            token.save()
+
+        admission_serializer = AdmissionSerializer(admission)
+        return Response({
+            "message": f"Patient {patient.user.get_full_name() or patient.user.username} admitted successfully! Auto-assigned Bed {assigned_bed.bed_number} in {assigned_bed.ward.name}.",
+            "admission": admission_serializer.data,
+            "assigned_bed": {
+                "id": assigned_bed.id,
+                "bed_number": assigned_bed.bed_number,
+                "ward_name": assigned_bed.ward.name,
+                "ward_type": assigned_bed.ward.ward_type,
+                "floor_number": assigned_bed.ward.floor_number,
+            }
+        }, status=status.HTTP_201_CREATED)
+
+
+class ActiveAdmissionsListView(generics.ListAPIView):
+    """
+    GET /api/beds/admissions/active/
+    Lists all patients currently admitted to hospital beds.
+    """
+    serializer_class = AdmissionSerializer
+    permission_classes = [CanManageBeds]
+
+    def get_queryset(self):
+        queryset = Admission.objects.filter(status='admitted').select_related(
+            'patient__user', 'bed__ward', 'attending_doctor__user', 'token'
+        ).order_by('-admission_date')
+
+        # Filter by doctor (my_patients)
+        my_patients = self.request.query_params.get('my_patients')
+        if my_patients and hasattr(self.request.user, 'doctor_profile'):
+            queryset = queryset.filter(attending_doctor=self.request.user.doctor_profile)
+
+        doctor_id = self.request.query_params.get('doctor')
+        if doctor_id:
+            queryset = queryset.filter(attending_doctor_id=doctor_id)
+
+        ward_type = self.request.query_params.get('ward_type')
+        if ward_type:
+            queryset = queryset.filter(bed__ward__ward_type=ward_type)
+
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(patient__user__first_name__icontains=search) |
+                Q(patient__user__last_name__icontains=search) |
+                Q(bed__bed_number__icontains=search) |
+                Q(bed__ward__name__icontains=search)
+            )
+
+        return queryset
+
+
 class AdmissionListCreateView(generics.ListCreateAPIView):
     """
     GET: List active admissions
@@ -253,7 +403,6 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         bed = serializer.validated_data.get('bed')
-        # Mark bed occupied
         bed.status = 'occupied'
         bed.save()
         serializer.save(status='admitted')
@@ -262,7 +411,8 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
 class AdmissionDischargeView(APIView):
     """
     POST /api/beds/admissions/<id>/discharge/
-    Discharges a patient and puts the bed into 'cleaning' status.
+    Discharges a patient.
+    Prompt requirement: On Discharge, bed becomes Available again.
     """
     permission_classes = [CanManageBeds]
 
@@ -282,13 +432,13 @@ class AdmissionDischargeView(APIView):
         admission.discharge_notes = discharge_notes
         admission.save()
 
-        # Update bed status to 'cleaning' (standard hospital sanitize protocol)
+        # Update bed status back to 'available' again!
         bed = admission.bed
-        bed.status = 'cleaning'
+        bed.status = 'available'
         bed.save()
 
         return Response({
-            "message": f"Patient discharged successfully. Bed {bed.bed_number} is now marked as Cleaning.",
+            "message": f"Patient {admission.patient.user.get_full_name() or admission.patient.user.username} discharged successfully. Bed {bed.bed_number} is now Available again.",
             "admission": AdmissionSerializer(admission).data,
             "bed": BedSerializer(bed).data,
         }, status=status.HTTP_200_OK)

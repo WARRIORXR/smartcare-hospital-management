@@ -71,6 +71,16 @@ export const bedService = {
     return response.data;
   },
 
+  getActiveAdmissions: async (params = {}) => {
+    const response = await api.get('/beds/admissions/active/', { params });
+    return response.data;
+  },
+
+  autoAdmitPatient: async (admissionData) => {
+    const response = await api.post('/beds/admissions/auto-admit/', admissionData);
+    return response.data;
+  },
+
   admitPatient: async (admissionData) => {
     const response = await api.post('/beds/admissions/', admissionData);
     return response.data;

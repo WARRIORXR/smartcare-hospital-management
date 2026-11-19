@@ -34,6 +34,7 @@ class Token(models.Model):
         ('called',     'Called'),       # Doctor has called patient into room
         ('in_progress','In Progress'),  # Doctor is seeing this patient now
         ('completed',  'Completed'),    # Visit done
+        ('admitted',   'Admitted to Ward'), # Admitted to hospital bed
         ('cancelled',  'Cancelled'),    # Patient left / cancelled
         ('skipped',    'Skipped'),      # Doctor skipped this patient
     ]

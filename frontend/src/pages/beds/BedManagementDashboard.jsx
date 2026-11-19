@@ -50,7 +50,9 @@ const BedManagementDashboard = () => {
     occupancy_rate: 0,
   });
   const [wards, setWards] = useState([]);
+  const [activeAdmissions, setActiveAdmissions] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [viewTab, setViewTab] = useState('grid'); // 'grid' | 'admissions'
 
   // Filter states
   const [selectedType, setSelectedType] = useState('all');
@@ -85,16 +87,20 @@ const BedManagementDashboard = () => {
     batch_count: 5,
   });
 
-  // Fetch live overview data
+  // Fetch live overview & active admissions
   const fetchOverview = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true);
     else setRefreshing(true);
     setError(null);
 
     try {
-      const data = await bedService.getOverview();
-      setSummary(data.summary || {});
-      setWards(data.wards || []);
+      const [overviewData, admissionsData] = await Promise.all([
+        bedService.getOverview(),
+        bedService.getActiveAdmissions().catch(() => []),
+      ]);
+      setSummary(overviewData.summary || {});
+      setWards(overviewData.wards || []);
+      setActiveAdmissions(admissionsData || []);
     } catch (err) {
       console.error('Failed to fetch bed overview:', err);
       setError('Could not load live bed availability. Ensure backend is running.');
@@ -150,6 +156,22 @@ const BedManagementDashboard = () => {
     } catch (err) {
       console.error('Failed to delete bed:', err);
       alert('Failed to delete bed: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  // Handle Discharge Inpatient (Bed becomes Available again)
+  const handleDischargePatient = async (admissionId, bedNumber, patientName = 'Patient') => {
+    const notes = prompt(`Enter discharge summary notes for ${patientName}:`, 'Patient recovered and discharged.');
+    if (notes === null) return; // user cancelled
+
+    try {
+      const res = await bedService.dischargePatient(admissionId, notes);
+      setSuccessMsg(`Patient ${patientName} discharged. Bed ${bedNumber} is now Available again!`);
+      fetchOverview(true);
+      setSelectedBedForAction(null);
+    } catch (err) {
+      console.error('Failed to discharge patient:', err);
+      alert('Failed to discharge patient: ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -440,7 +462,119 @@ const BedManagementDashboard = () => {
           </div>
         </div>
 
-        {/* ── Filter Controls ── */}
+        {/* ── Main View Selector Tabs ── */}
+        <div className="flex items-center gap-3 border-b border-gray-200 pb-3 mb-6">
+          <button
+            onClick={() => setViewTab('grid')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              viewTab === 'grid'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <span>🛏️</span>
+            <span>Live Ward & Bed Grid</span>
+          </button>
+
+          <button
+            onClick={() => setViewTab('admissions')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              viewTab === 'admissions'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <span>📋</span>
+            <span>Active Inpatients ({activeAdmissions.length})</span>
+          </button>
+        </div>
+
+        {viewTab === 'admissions' ? (
+          /* ── Inpatient Admissions Table ── */
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50/70 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Current Inpatient Admissions</h2>
+                <p className="text-xs text-gray-500">
+                  Patients currently occupying hospital beds. Discharging a patient frees their bed to Available.
+                </p>
+              </div>
+              <span className="px-3 py-1 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200">
+                {activeAdmissions.length} Admitted
+              </span>
+            </div>
+
+            {activeAdmissions.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                <span className="text-4xl block mb-2">🛏️</span>
+                <p className="font-bold text-sm">No Patients Currently Admitted</p>
+                <p className="text-xs text-gray-400 mt-1">All hospital beds are currently free or cleaning.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold tracking-wider">
+                    <tr>
+                      <th className="px-6 py-3.5">Assigned Bed</th>
+                      <th className="px-6 py-3.5">Patient Details</th>
+                      <th className="px-6 py-3.5">Ward & Category</th>
+                      <th className="px-6 py-3.5">Attending Doctor</th>
+                      <th className="px-6 py-3.5">Diagnosis</th>
+                      <th className="px-6 py-3.5">Admitted On</th>
+                      <th className="px-6 py-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {activeAdmissions.map((adm) => (
+                      <tr key={adm.id} className="hover:bg-gray-50/80 transition">
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50 text-rose-800 border border-rose-300 font-black text-xs">
+                            <span className="w-2 h-2 rounded-full bg-rose-600"></span>
+                            <span>{adm.bed_number}</span>
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-gray-900">{adm.patient_name}</div>
+                          <div className="text-xs text-gray-500">
+                            {adm.patient_code} • Gender: {adm.patient_gender} • Blood:{' '}
+                            <span className="text-red-600 font-semibold">{adm.patient_blood_group}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-gray-800">{adm.ward_name}</div>
+                          <div className="text-[10px] uppercase font-bold text-gray-500">{adm.ward_type}</div>
+                        </td>
+                        <td className="px-6 py-4 text-xs font-semibold text-gray-700">
+                          {adm.attending_doctor_name || 'Not Assigned'}
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-600 max-w-xs truncate">
+                          {adm.diagnosis || 'Clinical Care'}
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-500">
+                          {new Date(adm.admission_date).toLocaleString([], {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleDischargePatient(adm.id, adm.bed_number, adm.patient_name)}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 transition"
+                          >
+                            Discharge →
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── Grid View ── */
+          <>
+            {/* ── Filter Controls ── */}
         <div className="bg-white rounded-2xl border border-gray-200/80 p-4 mb-8 shadow-xs">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {/* Ward Type Tabs */}
@@ -728,7 +862,9 @@ const BedManagementDashboard = () => {
             })}
           </div>
         )}
-      </main>
+      </>
+    )}
+  </main>
 
       {/* ── Modal: Add Ward ── */}
       {showAddWardModal && (
@@ -1096,6 +1232,29 @@ const BedManagementDashboard = () => {
                   </p>
                 )}
               </div>
+
+              {/* Quick Discharge Inpatient Action if Bed Occupied */}
+              {selectedBedForAction.status === 'occupied' && selectedBedForAction.current_admission_id && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDischargePatient(
+                        selectedBedForAction.current_admission_id,
+                        selectedBedForAction.bed_number,
+                        selectedBedForAction.current_patient_name
+                      )
+                    }
+                    className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
+                  >
+                    <span>🚪</span>
+                    <span>Discharge Patient & Free Bed</span>
+                  </button>
+                  <p className="text-2xs text-gray-500 text-center mt-1">
+                    Bed will automatically become Available (Green) again.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="pt-3 border-t border-gray-100 flex items-center justify-between">

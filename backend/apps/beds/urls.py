@@ -15,6 +15,8 @@ from .views import (
     BedLiveOverviewView,
     AdmissionListCreateView,
     AdmissionDischargeView,
+    AutoAdmitPatientView,
+    ActiveAdmissionsListView,
 )
 
 urlpatterns = [
@@ -31,6 +33,8 @@ urlpatterns = [
     path('<int:pk>/status/', BedQuickStatusUpdateView.as_view(), name='bed_quick_status_update'),
 
     # Admission & Discharge
+    path('admissions/auto-admit/', AutoAdmitPatientView.as_view(), name='admission_auto_admit'),
+    path('admissions/active/', ActiveAdmissionsListView.as_view(), name='admission_active_list'),
     path('admissions/', AdmissionListCreateView.as_view(), name='admission_list_create'),
     path('admissions/<int:pk>/discharge/', AdmissionDischargeView.as_view(), name='admission_discharge'),
 ]
