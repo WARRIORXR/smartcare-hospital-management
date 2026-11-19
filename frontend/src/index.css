@@ -1,0 +1,14 @@
+/* src/index.css
+   ---------------
+   Global CSS for SmartCare.
+   These 3 Tailwind directives inject all Tailwind utility classes.
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom global styles */
+body {
+  @apply bg-gray-50 font-sans;
+}
