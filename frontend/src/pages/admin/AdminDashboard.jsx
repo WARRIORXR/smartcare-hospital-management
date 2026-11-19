@@ -34,7 +34,13 @@ const AdminDashboard = () => {
               onClick={() => navigate('/admin/manage')}
               className="inline-flex items-center px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white text-sm font-bold shadow-md transition"
             >
-              👨‍⚕️ Manage Doctors & Departments
+              👨‍⚕️ Doctors & Depts
+            </button>
+            <button
+              onClick={() => navigate('/admin/beds')}
+              className="inline-flex items-center px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-bold shadow-md transition"
+            >
+              🛏️ Bed Management
             </button>
             <a
               href="http://localhost:8000/admin/"
@@ -59,13 +65,16 @@ const AdminDashboard = () => {
           <p className="text-xs text-emerald-600 font-semibold mt-1">↑ Active Doctor Queues</p>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div
+          onClick={() => navigate('/admin/beds')}
+          className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-purple-300 hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 uppercase">Bed Occupancy</span>
+            <span className="text-xs font-medium text-gray-500 uppercase">Live Bed Dashboard</span>
             <span className="p-2 bg-purple-50 text-purple-600 rounded-lg text-lg">🛏️</span>
           </div>
-          <p className="text-3xl font-bold text-gray-900 mt-2">72%</p>
-          <p className="text-xs text-gray-500 mt-1">18 of 25 Beds Occupied</p>
+          <p className="text-3xl font-bold text-gray-900 mt-2">Live Grid</p>
+          <p className="text-xs text-purple-600 font-semibold mt-1">🟢 Available • 🔴 Occupied →</p>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
@@ -106,18 +115,26 @@ const AdminDashboard = () => {
         </div>
 
         {/* Module 2: Beds */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <span>🛏️</span> Module 2: Bed Management
-          </h3>
-          <p className="text-sm text-gray-600 mt-2">
-            Monitor ICU, General, and Private wards. Allocate beds to new admissions and process discharges.
-          </p>
-          <ul className="text-xs text-gray-500 space-y-1.5 mt-4">
-            <li>• Real-time ward capacity tracking</li>
-            <li>• Oxygen & ventilator equipment flags</li>
-            <li>• Inpatient admission & discharge logs</li>
-          </ul>
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <span>🛏️</span> Module 2: Bed Management
+            </h3>
+            <p className="text-sm text-gray-600 mt-2">
+              Monitor ICU, General, and Private wards. Color-coded live availability (Green = Available, Red = Occupied).
+            </p>
+            <ul className="text-xs text-gray-500 space-y-1.5 mt-4">
+              <li>• Real-time ward capacity tracking</li>
+              <li>• Add Wards (General, ICU, Private) & Beds</li>
+              <li>• Instant bed status toggle (Available, Occupied, Cleaning)</li>
+            </ul>
+          </div>
+          <button
+            onClick={() => navigate('/admin/beds')}
+            className="mt-6 w-full py-2 px-4 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs transition"
+          >
+            Open Bed Management Dashboard →
+          </button>
         </div>
 
         {/* Module 3: Blood Bank */}

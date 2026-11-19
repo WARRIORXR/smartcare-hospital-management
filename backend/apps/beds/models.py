@@ -30,12 +30,11 @@ class Ward(models.Model):
     WARD_TYPE_CHOICES = [
         ('general',   'General Ward'),
         ('icu',       'ICU'),
-        ('icu_neo',   'Neonatal ICU'),
         ('private',   'Private Room'),
         ('semi',      'Semi-Private Room'),
-        ('maternity', 'Maternity Ward'),
-        ('pediatric', 'Pediatric Ward'),
         ('emergency', 'Emergency Ward'),
+        ('pediatric', 'Pediatric Ward'),
+        ('maternity', 'Maternity Ward'),
     ]
 
     name = models.CharField(
@@ -89,6 +88,16 @@ class Ward(models.Model):
         """Returns count of beds that are currently free."""
         return self.beds.filter(status='available').count()
 
+    @property
+    def occupied_beds(self):
+        """Returns count of beds that are currently occupied."""
+        return self.beds.filter(status='occupied').count()
+
+    @property
+    def cleaning_beds(self):
+        """Returns count of beds currently being cleaned."""
+        return self.beds.filter(status='cleaning').count()
+
 
 # ─────────────────────────────────────────────
 #  BED  (individual bed in a ward)
@@ -96,14 +105,15 @@ class Ward(models.Model):
 class Bed(models.Model):
     """
     A single bed inside a ward.
-    Tracks whether the bed is available, occupied, or under maintenance.
+    Tracks whether the bed is available, occupied, or cleaning.
     """
 
     STATUS_CHOICES = [
-        ('available',    'Available'),       # Bed is free
-        ('occupied',     'Occupied'),        # Patient is admitted
-        ('maintenance',  'Under Maintenance'), # Being cleaned/repaired
-        ('reserved',     'Reserved'),        # Reserved for incoming patient
+        ('available',   'Available'),          # Free - Green
+        ('occupied',    'Occupied'),           # Patient admitted - Red
+        ('cleaning',    'Cleaning'),           # Sanitizing/Cleaning - Amber
+        ('maintenance', 'Under Maintenance'),  # Technical repair
+        ('reserved',    'Reserved'),           # Reserved
     ]
 
     # Which ward does this bed belong to?

@@ -110,20 +110,42 @@ const Navbar = () => {
                     >
                       Doctors
                     </Link>
+                    <Link
+                      to="/beds"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/beds')
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      🛏️ Live Beds
+                    </Link>
                   </>
                 )}
 
                 {user.role === 'admin' && (
-                  <Link
-                    to="/admin/manage"
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                      isCurrent('/admin/manage')
-                        ? 'bg-purple-50 text-purple-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    Staff & Departments
-                  </Link>
+                  <>
+                    <Link
+                      to="/admin/manage"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/admin/manage')
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      Staff & Departments
+                    </Link>
+                    <Link
+                      to="/admin/beds"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/admin/beds')
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      🛏️ Bed Management
+                    </Link>
+                  </>
                 )}
               </nav>
             )}

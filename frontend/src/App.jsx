@@ -23,6 +23,7 @@ import DoctorList from './pages/patient/DoctorList';
 import MyTokens from './pages/patient/MyTokens';
 import BookTokenPage from './pages/patient/BookTokenPage';
 import PublicDisplayScreen from './pages/public/PublicDisplayScreen';
+import BedManagementDashboard from './pages/beds/BedManagementDashboard';
 
 // Route Guard
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -79,6 +80,12 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/manage" element={<AdminDoctorManagement />} />
+            <Route path="/admin/beds" element={<BedManagementDashboard />} />
+          </Route>
+
+          {/* Shared Bed Availability Route for Authenticated Users */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'patient']} />}>
+            <Route path="/beds" element={<BedManagementDashboard />} />
           </Route>
 
           {/* Default Fallback Route */}
