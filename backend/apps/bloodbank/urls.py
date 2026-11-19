@@ -11,7 +11,9 @@ from .views import (
     BloodStockUpdateView,
     BloodBatchListView,
     DonorListCreateView,
+    MatchingDonorsView,
     BloodRequestListCreateView,
+    BloodRequestStatusUpdateView,
 )
 
 urlpatterns = [
@@ -22,7 +24,11 @@ urlpatterns = [
     # Batches
     path('batches/', BloodBatchListView.as_view(), name='blood_batches'),
 
-    # Donors & Requests
+    # Donors & Matching
     path('donors/', DonorListCreateView.as_view(), name='donor_list_create'),
+    path('donors/matching/', MatchingDonorsView.as_view(), name='matching_donors'),
+
+    # Requests
     path('requests/', BloodRequestListCreateView.as_view(), name='blood_requests'),
+    path('requests/<int:pk>/status/', BloodRequestStatusUpdateView.as_view(), name='blood_request_status_update'),
 ]

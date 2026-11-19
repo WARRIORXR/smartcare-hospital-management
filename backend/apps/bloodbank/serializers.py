@@ -109,27 +109,90 @@ class BloodBatchSerializer(serializers.ModelSerializer):
 
 
 class DonorSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Blood Donors (Name, Blood Group, Phone, City, Last Donation Date).
+    """
+    can_donate_now = serializers.BooleanField(read_only=True)
+    days_since_last_donation = serializers.IntegerField(read_only=True)
+    blood_group_display = serializers.CharField(source='get_blood_group_display', read_only=True)
+
     class Meta:
         model = Donor
-        fields = '__all__'
+        fields = [
+            'id',
+            'name',
+            'blood_group',
+            'blood_group_display',
+            'phone',
+            'city',
+            'age',
+            'gender',
+            'address',
+            'last_donation_date',
+            'is_eligible',
+            'can_donate_now',
+            'days_since_last_donation',
+            'notes',
+            'created_at',
+        ]
         read_only_fields = ['created_at']
 
 
 class BloodRequestSerializer(serializers.ModelSerializer):
-    patient_name = serializers.SerializerMethodField()
+    """
+    Serializer for Blood Unit Requests (Patient/Doctor with Urgency Normal/Urgent/Emergency).
+    """
+    patient_name = serializers.CharField(required=False, allow_blank=True)
     requested_by_name = serializers.SerializerMethodField()
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    available_units_now = serializers.SerializerMethodField()
+    is_stock_low = serializers.SerializerMethodField()
 
     class Meta:
         model = BloodRequest
-        fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']
+        fields = [
+            'id',
+            'patient',
+            'patient_name',
+            'hospital_ward',
+            'requested_by',
+            'requested_by_name',
+            'blood_group',
+            'units_required',
+            'units_provided',
+            'purpose',
+            'priority',
+            'priority_display',
+            'status',
+            'status_display',
+            'required_by_date',
+            'notes',
+            'available_units_now',
+            'is_stock_low',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'requested_by']
 
     def get_patient_name(self, obj):
+        if obj.patient_name:
+            return obj.patient_name
         if obj.patient and obj.patient.user:
             return obj.patient.user.get_full_name() or obj.patient.user.username
-        return 'Unknown'
+        return 'Patient'
 
     def get_requested_by_name(self, obj):
         if obj.requested_by:
             return obj.requested_by.get_full_name() or obj.requested_by.username
-        return 'Staff'
+        return 'Medical Staff'
+
+    def get_available_units_now(self, obj):
+        stock = BloodStock.objects.filter(blood_group=obj.blood_group).first()
+        return stock.units_available if stock else 0
+
+    def get_is_stock_low(self, obj):
+        stock = BloodStock.objects.filter(blood_group=obj.blood_group).first()
+        if not stock:
+            return True
+        return stock.units_available < 3 or stock.units_available < obj.units_required

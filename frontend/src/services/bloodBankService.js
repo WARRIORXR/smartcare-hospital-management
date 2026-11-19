@@ -31,8 +31,8 @@ export const bloodBankService = {
   },
 
   // Donors
-  getDonors: async () => {
-    const response = await api.get('/bloodbank/donors/');
+  getDonors: async (params = {}) => {
+    const response = await api.get('/bloodbank/donors/', { params });
     return response.data;
   },
 
@@ -41,14 +41,29 @@ export const bloodBankService = {
     return response.data;
   },
 
+  getMatchingDonors: async (bloodGroup, city = '') => {
+    const response = await api.get('/bloodbank/donors/matching/', {
+      params: { blood_group: bloodGroup, city },
+    });
+    return response.data;
+  },
+
   // Requests
-  getRequests: async () => {
-    const response = await api.get('/bloodbank/requests/');
+  getRequests: async (params = {}) => {
+    const response = await api.get('/bloodbank/requests/', { params });
     return response.data;
   },
 
   createRequest: async (requestData) => {
     const response = await api.post('/bloodbank/requests/', requestData);
+    return response.data;
+  },
+
+  updateRequestStatus: async (id, status, rejectionReason = '') => {
+    const response = await api.patch(`/bloodbank/requests/${id}/status/`, {
+      status,
+      rejection_reason: rejectionReason,
+    });
     return response.data;
   },
 };

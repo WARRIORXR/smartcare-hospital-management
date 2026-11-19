@@ -16,6 +16,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
 import Navbar from '../../components/common/Navbar';
+import { Link } from 'react-router-dom';
 
 // Clinical description of each blood group
 const BLOOD_GROUP_INFO = {
@@ -323,8 +324,8 @@ const BloodStockDashboard = () => {
           </div>
         </div>
 
-        {/* ── Tab Switcher: Cards View vs Batch Log ── */}
-        <div className="flex items-center gap-2 border-b border-gray-200 pb-3 mb-6">
+        {/* ── Tab Switcher: Cards View vs Batch Log vs Donors vs Requests ── */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-3 mb-6">
           <button
             onClick={() => setActiveViewTab('cards')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -337,6 +338,22 @@ const BloodStockDashboard = () => {
             <span>Live Stock Cards (8 Groups)</span>
           </button>
 
+          <Link
+            to="/bloodbank/donors"
+            className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-gray-700 hover:bg-gray-100 bg-white border border-gray-200 shadow-2xs"
+          >
+            <span>👥</span>
+            <span>Register as Donor / Directory</span>
+          </Link>
+
+          <Link
+            to="/bloodbank/requests"
+            className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-gray-700 hover:bg-gray-100 bg-white border border-gray-200 shadow-2xs"
+          >
+            <span>📋</span>
+            <span>Request Blood Units</span>
+          </Link>
+
           <button
             onClick={() => setActiveViewTab('batches')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -345,7 +362,7 @@ const BloodStockDashboard = () => {
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            <span>📋</span>
+            <span>📦</span>
             <span>Batch & Expiry Ledger ({batches.length})</span>
           </button>
         </div>

@@ -202,10 +202,12 @@ class Donor(models.Model):
     )
 
     age = models.PositiveIntegerField(
+        default=25,
+        blank=True,
         help_text="Donor age (must be 18-65 to donate)"
     )
 
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='M')
 
     blood_group = models.CharField(
         max_length=3,
@@ -215,6 +217,13 @@ class Donor(models.Model):
     phone = models.CharField(
         max_length=15,
         help_text="Contact number"
+    )
+
+    city = models.CharField(
+        max_length=100,
+        default='City',
+        blank=True,
+        help_text="Donor residential city"
     )
 
     address = models.TextField(blank=True)
@@ -227,6 +236,8 @@ class Donor(models.Model):
 
     # Date of this donation
     donation_date = models.DateField(
+        null=True,
+        blank=True,
         help_text="Date when blood was collected"
     )
 
@@ -234,7 +245,7 @@ class Donor(models.Model):
     last_donation_date = models.DateField(
         null=True,
         blank=True,
-        help_text="Automatically set for repeat donors"
+        help_text="Last donation date (enforces 90-day cooldown)"
     )
 
     # Was donor eligible? (health check before donation)
@@ -263,10 +274,26 @@ class Donor(models.Model):
 
     class Meta:
         db_table = 'donors'
-        ordering = ['-donation_date']
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.name} | {self.blood_group} | {self.donation_date}"
+        return f"{self.name} | {self.blood_group} | {self.city} | {self.phone}"
+
+    @property
+    def days_since_last_donation(self):
+        if not self.last_donation_date:
+            return None
+        from django.utils import timezone
+        return (timezone.now().date() - self.last_donation_date).days
+
+    @property
+    def can_donate_now(self):
+        """Eligible if first-time donor or last donation was > 90 days ago (3 months)."""
+        if not self.is_eligible:
+            return False
+        if not self.last_donation_date:
+            return True
+        return self.days_since_last_donation >= 90
 
 
 # ─────────────────────────────────────────────
@@ -290,24 +317,41 @@ class BloodRequest(models.Model):
     ]
 
     PRIORITY_CHOICES = [
-        ('normal', 'Normal'),     # Can wait a few hours
-        ('urgent', 'Urgent'),     # Needed within 2 hours
-        ('critical','Critical'),  # Immediate / life threatening
+        ('normal',    'Normal'),     # Can wait a few hours
+        ('urgent',    'Urgent'),     # Needed within 2-4 hours
+        ('emergency', 'Emergency'),  # Immediate / life-threatening
     ]
 
     PURPOSE_CHOICES = [
         ('surgery',      'Surgery'),
-        ('accident',     'Accident/Emergency'),
-        ('anemia',       'Anemia'),
+        ('accident',     'Accident / Trauma / Emergency'),
+        ('anemia',       'Severe Anemia'),
         ('thalassemia',  'Thalassemia'),
-        ('other',        'Other'),
+        ('maternity',    'Maternity / Delivery'),
+        ('other',        'Other Medical Condition'),
     ]
 
-    # For which patient is blood requested?
+    # For which patient is blood requested (optional link to registered patient)
     patient = models.ForeignKey(
         Patient,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='blood_requests'
+    )
+
+    # Name of patient (for fast search or if patient record is not linked)
+    patient_name = models.CharField(
+        max_length=150,
+        blank=True,
+        help_text="Full name of patient needing blood"
+    )
+
+    # Hospital ward / room location
+    hospital_ward = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="e.g. ICU-02, General Ward A"
     )
 
     # Who made the request (could be patient themselves or reception staff)

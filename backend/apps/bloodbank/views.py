@@ -188,24 +188,226 @@ class BloodBatchListView(generics.ListCreateAPIView):
         stock.save()
 
 
+COMPATIBLE_DONORS = {
+    'O-':  ['O-'],
+    'O+':  ['O+', 'O-'],
+    'A-':  ['A-', 'O-'],
+    'A+':  ['A+', 'A-', 'O+', 'O-'],
+    'B-':  ['B-', 'O-'],
+    'B+':  ['B+', 'B-', 'O+', 'O-'],
+    'AB-': ['AB-', 'A-', 'B-', 'O-'],
+    'AB+': ['AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-'],
+}
+
+
 class DonorListCreateView(generics.ListCreateAPIView):
     """
-    GET: List registered donors
-    POST: Register a new donor and donation
+    GET: List registered donors (searchable by ?blood_group= and ?city=)
+    POST: Register a new blood donor (Name, Blood Group, Phone, City, Last Donation Date)
     """
-    queryset = Donor.objects.all().order_by('-donation_date')
     serializer_class = DonorSerializer
-    permission_classes = [CanManageBloodBank]
-
-
-class BloodRequestListCreateView(generics.ListCreateAPIView):
-    """
-    GET: List blood requests
-    POST: Submit a new blood request
-    """
-    queryset = BloodRequest.objects.select_related('patient__user', 'requested_by', 'reviewed_by').all().order_by('-created_at')
-    serializer_class = BloodRequestSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = Donor.objects.all().order_by('-created_at')
+        blood_group = self.request.query_params.get('blood_group')
+        city = self.request.query_params.get('city')
+        can_donate = self.request.query_params.get('can_donate')
+
+        if blood_group:
+            queryset = queryset.filter(blood_group=blood_group)
+        if city:
+            queryset = queryset.filter(city__icontains=city)
+        if can_donate == 'true':
+            queryset = queryset.filter(is_eligible=True)
+
+        return queryset
+
     def perform_create(self, serializer):
-        serializer.save(requested_by=self.request.user)
+        user = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(recorded_by=user)
+
+
+class MatchingDonorsView(APIView):
+    """
+    GET /api/bloodbank/donors/matching/?blood_group=O-&city=Mumbai
+    Returns matching donors compatible with requested blood group.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        blood_group = request.query_params.get('blood_group', '').strip().upper()
+        city = request.query_params.get('city', '').strip()
+
+        if not blood_group:
+            return Response(
+                {"error": "blood_group parameter is required (e.g. ?blood_group=O-)"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        compatible_groups = COMPATIBLE_DONORS.get(blood_group, [blood_group])
+
+        donors_qs = Donor.objects.filter(
+            blood_group__in=compatible_groups,
+            is_eligible=True
+        )
+
+        if city:
+            # Sort donors from same city first
+            donors_qs = sorted(
+                donors_qs,
+                key=lambda d: (0 if city.lower() in (d.city or '').lower() else 1, d.created_at),
+                reverse=False
+            )
+        else:
+            donors_qs = donors_qs.order_by('-created_at')
+
+        serializer = DonorSerializer(donors_qs[:20], many=True)
+
+        # Check current stock
+        stock = BloodStock.objects.filter(blood_group=blood_group).first()
+        available_units = stock.units_available if stock else 0
+
+        return Response({
+            "requested_blood_group": blood_group,
+            "compatible_blood_groups": compatible_groups,
+            "available_stock_units": available_units,
+            "is_stock_low": available_units < 3,
+            "matching_donors_count": len(serializer.data),
+            "donors": serializer.data,
+        }, status=status.HTTP_200_OK)
+
+
+class BloodRequestListCreateView(APIView):
+    """
+    GET: List blood requests (filtered by user role)
+    POST: Submit a blood request with urgency Normal/Urgent/Emergency.
+          If stock is low (< 3 units or < requested units), automatically returns matching donors!
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = BloodRequest.objects.select_related(
+            'patient__user', 'requested_by', 'reviewed_by'
+        ).all().order_by('-created_at')
+
+        # Patients see only their own requests
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            queryset = queryset.filter(patient__user=user)
+
+        priority = request.query_params.get('priority')
+        status_param = request.query_params.get('status')
+        blood_group = request.query_params.get('blood_group')
+
+        if priority:
+            queryset = queryset.filter(priority=priority)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        if blood_group:
+            queryset = queryset.filter(blood_group=blood_group)
+
+        serializer = BloodRequestSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = BloodRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        blood_group = serializer.validated_data.get('blood_group')
+        units_required = serializer.validated_data.get('units_required', 1)
+        priority = serializer.validated_data.get('priority', 'normal')
+        patient_name = serializer.validated_data.get('patient_name', '')
+
+        # Resolve Patient
+        patient = None
+        if hasattr(request.user, 'patient_profile'):
+            patient = request.user.patient_profile
+            if not patient_name:
+                patient_name = request.user.get_full_name() or request.user.username
+
+        # Save Blood Request
+        blood_request = serializer.save(
+            requested_by=request.user,
+            patient=patient,
+            patient_name=patient_name or 'Patient',
+            status='pending',
+        )
+
+        # Check Stock Level
+        stock = BloodStock.objects.filter(blood_group=blood_group).first()
+        available_units = stock.units_available if stock else 0
+        is_stock_low = available_units < 3 or available_units < units_required
+
+        # If stock is low, fetch matching donors!
+        matching_donors_data = []
+        if is_stock_low:
+            compatible_groups = COMPATIBLE_DONORS.get(blood_group, [blood_group])
+            matching_donors = Donor.objects.filter(
+                blood_group__in=compatible_groups,
+                is_eligible=True
+            ).order_by('-created_at')[:15]
+            matching_donors_data = DonorSerializer(matching_donors, many=True).data
+
+        return Response({
+            "message": f"Blood request #{blood_request.id} for {units_required} unit(s) of {blood_group} submitted with {priority.upper()} priority.",
+            "request": BloodRequestSerializer(blood_request).data,
+            "stock_status": {
+                "blood_group": blood_group,
+                "units_available": available_units,
+                "units_required": units_required,
+                "is_stock_low": is_stock_low,
+                "alert_message": (
+                    f"⚠️ ATTENTION: {blood_group} stock is critically low! (Available: {available_units} units, Required: {units_required} units). Matching donors listed below for immediate outreach."
+                    if is_stock_low
+                    else f"✅ Stock sufficient ({available_units} units available in blood bank)."
+                ),
+            },
+            "matching_donors": matching_donors_data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class BloodRequestStatusUpdateView(APIView):
+    """
+    PATCH /api/bloodbank/requests/<id>/status/
+    Staff or Doctor can approve, fulfill, or reject blood requests.
+    On approval/fulfillment, units are decremented from BloodStock.
+    """
+    permission_classes = [CanManageBloodBank]
+
+    def patch(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        blood_request = get_object_or_404(BloodRequest, pk=pk)
+
+        new_status = request.data.get('status')
+        rejection_reason = request.data.get('rejection_reason', '')
+
+        valid_statuses = ['approved', 'rejected', 'fulfilled', 'cancelled']
+        if new_status not in valid_statuses:
+            return Response(
+                {"error": f"Invalid status '{new_status}'. Allowed: {valid_statuses}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if new_status == 'fulfilled' and blood_request.status != 'fulfilled':
+            # Deduct units from stock
+            stock = BloodStock.objects.filter(blood_group=blood_request.blood_group).first()
+            if not stock or stock.units_available < blood_request.units_required:
+                return Response(
+                    {"error": f"Insufficient {blood_request.blood_group} blood units in stock to fulfill this request."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            stock.units_available -= blood_request.units_required
+            stock.save()
+            blood_request.units_provided = blood_request.units_required
+
+        blood_request.status = new_status
+        blood_request.reviewed_by = request.user
+        if rejection_reason:
+            blood_request.rejection_reason = rejection_reason
+        blood_request.save()
+
+        return Response({
+            "message": f"Blood Request #{blood_request.id} status updated to {new_status.upper()}.",
+            "request": BloodRequestSerializer(blood_request).data,
+        }, status=status.HTTP_200_OK)

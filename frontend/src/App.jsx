@@ -25,6 +25,8 @@ import BookTokenPage from './pages/patient/BookTokenPage';
 import PublicDisplayScreen from './pages/public/PublicDisplayScreen';
 import BedManagementDashboard from './pages/beds/BedManagementDashboard';
 import BloodStockDashboard from './pages/bloodbank/BloodStockDashboard';
+import DonorRegistrationPage from './pages/bloodbank/DonorRegistrationPage';
+import BloodRequestPage from './pages/bloodbank/BloodRequestPage';
 
 // Route Guard
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -90,6 +92,8 @@ function App() {
             <Route path="/beds" element={<BedManagementDashboard />} />
             <Route path="/bloodbank" element={<BloodStockDashboard />} />
             <Route path="/bloodbank/stock" element={<BloodStockDashboard />} />
+            <Route path="/bloodbank/donors" element={<DonorRegistrationPage />} />
+            <Route path="/bloodbank/requests" element={<BloodRequestPage />} />
           </Route>
 
           {/* Default Fallback Route */}
