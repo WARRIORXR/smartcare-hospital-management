@@ -120,6 +120,16 @@ const Navbar = () => {
                     >
                       🛏️ Live Beds
                     </Link>
+                    <Link
+                      to="/bloodbank"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/bloodbank')
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      🩸 Blood Bank
+                    </Link>
                   </>
                 )}
 
@@ -143,7 +153,17 @@ const Navbar = () => {
                           : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
-                      🛏️ Bed Management
+                      🛏️ Beds
+                    </Link>
+                    <Link
+                      to="/bloodbank"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/bloodbank')
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      🩸 Blood Bank
                     </Link>
                   </>
                 )}

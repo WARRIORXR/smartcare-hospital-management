@@ -39,10 +39,11 @@ BLOOD_GROUP_CHOICES = [
 class BloodStock(models.Model):
     """
     Tracks the current inventory (in units) of each blood group.
-    There is exactly ONE record per blood group.
-    Units are updated when donations come in or requests are fulfilled.
+    There is exactly ONE record per blood group:
+    A+, A-, B+, B-, O+, O-, AB+, AB-
 
     1 unit ≈ 450 ml of whole blood.
+    Threshold: < 3 units triggers Red Critical Alert.
     """
 
     blood_group = models.CharField(
@@ -62,10 +63,17 @@ class BloodStock(models.Model):
         help_text="Units reserved for pending approved requests"
     )
 
-    # Minimum safe threshold — triggers alert if stock falls below
+    # Minimum safe threshold — triggers red alert if stock is less than 3 units
     minimum_threshold = models.PositiveIntegerField(
-        default=5,
-        help_text="Alert is raised if stock drops below this level"
+        default=3,
+        help_text="Red alert is raised if stock is less than 3 units"
+    )
+
+    # Nearest expiry date of current inventory batch
+    expiry_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Expiry date for current blood stock units"
     )
 
     last_updated = models.DateTimeField(
@@ -78,17 +86,86 @@ class BloodStock(models.Model):
         ordering = ['blood_group']
 
     def __str__(self):
-        return f"{self.blood_group} | {self.units_available} units available"
+        return f"{self.blood_group} | {self.units_available} units (Exp: {self.expiry_date})"
+
+    @property
+    def is_critical(self):
+        """Returns True if stock is less than 3 units (Red Alert)."""
+        return self.units_available < 3
 
     @property
     def is_low(self):
-        """Returns True if stock is below the safe minimum."""
+        """Returns True if stock is below minimum threshold."""
         return self.units_available < self.minimum_threshold
 
     @property
     def total_usable(self):
         """Units available minus reserved ones."""
         return max(0, self.units_available - self.units_reserved)
+
+
+# ─────────────────────────────────────────────
+#  BLOOD BATCH  (individual batch with expiry)
+# ─────────────────────────────────────────────
+class BloodBatch(models.Model):
+    """
+    Logs individual blood unit additions with batch number and expiry date.
+    Whole blood usually has shelf life of 35-42 days when refrigerated at 2-6°C.
+    """
+    blood_group = models.CharField(
+        max_length=3,
+        choices=BLOOD_GROUP_CHOICES
+    )
+
+    units = models.PositiveIntegerField(
+        default=1,
+        help_text="Number of units in this batch"
+    )
+
+    batch_number = models.CharField(
+        max_length=50,
+        blank=True,
+        unique=True,
+        help_text="e.g. BATCH-AP-202611-01"
+    )
+
+    collection_date = models.DateField(
+        auto_now_add=True,
+        help_text="Date blood was collected"
+    )
+
+    expiry_date = models.DateField(
+        help_text="Expiry date of this blood unit batch"
+    )
+
+    donor_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Optional donor identifier or name"
+    )
+
+    recorded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='logged_blood_batches'
+    )
+
+    is_disposed = models.BooleanField(
+        default=False,
+        help_text="True if expired and safely disposed"
+    )
+
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'blood_batches'
+        ordering = ['expiry_date', '-created_at']
+
+    def __str__(self):
+        return f"Batch {self.batch_number or self.id} | {self.blood_group} x{self.units} (Exp: {self.expiry_date})"
 
 
 # ─────────────────────────────────────────────

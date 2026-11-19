@@ -4,18 +4,25 @@ apps/bloodbank/admin.py
 Registers BloodStock, Donor, BloodRequest in Django Admin.
 """
 from django.contrib import admin
-from .models import BloodStock, Donor, BloodRequest
+from .models import BloodStock, BloodBatch, Donor, BloodRequest
 
 
 @admin.register(BloodStock)
 class BloodStockAdmin(admin.ModelAdmin):
-    list_display = ('blood_group', 'units_available', 'units_reserved', 'minimum_threshold', 'is_low', 'last_updated')
+    list_display = ('blood_group', 'units_available', 'minimum_threshold', 'is_critical', 'expiry_date', 'last_updated')
     list_filter = ('blood_group',)
 
-    def is_low(self, obj):
-        return obj.is_low
-    is_low.boolean = True           # Shows as green/red icon in admin
-    is_low.short_description = 'Low Stock?'
+    def is_critical(self, obj):
+        return obj.is_critical
+    is_critical.boolean = True
+    is_critical.short_description = 'Critical Alert (<3)?'
+
+
+@admin.register(BloodBatch)
+class BloodBatchAdmin(admin.ModelAdmin):
+    list_display = ('batch_number', 'blood_group', 'units', 'expiry_date', 'collection_date', 'recorded_by')
+    list_filter = ('blood_group', 'expiry_date')
+    search_fields = ('batch_number', 'donor_name')
 
 
 @admin.register(Donor)

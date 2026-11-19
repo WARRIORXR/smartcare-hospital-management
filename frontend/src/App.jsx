@@ -24,6 +24,7 @@ import MyTokens from './pages/patient/MyTokens';
 import BookTokenPage from './pages/patient/BookTokenPage';
 import PublicDisplayScreen from './pages/public/PublicDisplayScreen';
 import BedManagementDashboard from './pages/beds/BedManagementDashboard';
+import BloodStockDashboard from './pages/bloodbank/BloodStockDashboard';
 
 // Route Guard
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -81,11 +82,14 @@ function App() {
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/manage" element={<AdminDoctorManagement />} />
             <Route path="/admin/beds" element={<BedManagementDashboard />} />
+            <Route path="/admin/bloodbank" element={<BloodStockDashboard />} />
           </Route>
 
-          {/* Shared Bed Availability Route for Authenticated Users */}
-          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'patient']} />}>
+          {/* Shared Hospital Modules (Beds & Blood Bank) for Authenticated Users */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'patient', 'bloodbank_staff']} />}>
             <Route path="/beds" element={<BedManagementDashboard />} />
+            <Route path="/bloodbank" element={<BloodStockDashboard />} />
+            <Route path="/bloodbank/stock" element={<BloodStockDashboard />} />
           </Route>
 
           {/* Default Fallback Route */}

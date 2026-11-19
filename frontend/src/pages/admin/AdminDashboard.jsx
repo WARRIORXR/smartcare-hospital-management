@@ -42,6 +42,12 @@ const AdminDashboard = () => {
             >
               🛏️ Bed Management
             </button>
+            <button
+              onClick={() => navigate('/bloodbank')}
+              className="inline-flex items-center px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-sm font-bold shadow-md transition"
+            >
+              🩸 Blood Bank Stock
+            </button>
             <a
               href="http://localhost:8000/admin/"
               target="_blank"
@@ -77,13 +83,16 @@ const AdminDashboard = () => {
           <p className="text-xs text-purple-600 font-semibold mt-1">🟢 Available • 🔴 Occupied →</p>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div
+          onClick={() => navigate('/bloodbank')}
+          className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-rose-300 hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 uppercase">Blood Stock</span>
+            <span className="text-xs font-medium text-gray-500 uppercase">Blood Stock Live</span>
             <span className="p-2 bg-rose-50 text-rose-600 rounded-lg text-lg">🩸</span>
           </div>
-          <p className="text-3xl font-bold text-gray-900 mt-2">34 Units</p>
-          <p className="text-xs text-amber-600 font-semibold mt-1">⚠️ O- Low in inventory</p>
+          <p className="text-3xl font-bold text-gray-900 mt-2">8 Groups</p>
+          <p className="text-xs text-rose-600 font-semibold mt-1">🚨 Red Alert if &lt; 3 Units →</p>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
@@ -138,18 +147,26 @@ const AdminDashboard = () => {
         </div>
 
         {/* Module 3: Blood Bank */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <span>🩸</span> Module 3: Blood Bank
-          </h3>
-          <p className="text-sm text-gray-600 mt-2">
-            Track blood units across 8 blood groups. Manage blood donors and approve urgent hospital requests.
-          </p>
-          <ul className="text-xs text-gray-500 space-y-1.5 mt-4">
-            <li>• Real-time units per blood group</li>
-            <li>• Threshold alerts on depleted stock</li>
-            <li>• Donor registration & donation history</li>
-          </ul>
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <span>🩸</span> Module 3: Blood Bank Stock
+            </h3>
+            <p className="text-sm text-gray-600 mt-2">
+              Track blood units across A+, A-, B+, B-, O+, O-, AB+, AB-. Real-time red alerts when stock drops below 3 units.
+            </p>
+            <ul className="text-xs text-gray-500 space-y-1.5 mt-4">
+              <li>• Real-time stock cards for all 8 blood groups</li>
+              <li>• Expiry date tracking and disposal warnings</li>
+              <li>• Staff Add/Update units with batch records</li>
+            </ul>
+          </div>
+          <button
+            onClick={() => navigate('/bloodbank')}
+            className="mt-6 w-full py-2 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition"
+          >
+            Open Blood Bank Stock Dashboard →
+          </button>
         </div>
       </div>
     </div>
