@@ -110,6 +110,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class DoctorDetailSerializer(serializers.ModelSerializer):
     """
     Rich Doctor details for Patient Directory and Admin view.
+    Includes real-time live queue load (how many patients are waiting today).
     """
     user_id = serializers.IntegerField(source='user.id', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
@@ -120,6 +121,12 @@ class DoctorDetailSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source='user.phone', read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
 
+    # Live Queue Load fields
+    waiting_patients_count = serializers.SerializerMethodField()
+    estimated_wait_time = serializers.SerializerMethodField()
+    today_total_tokens = serializers.SerializerMethodField()
+    current_serving_token = serializers.SerializerMethodField()
+
     class Meta:
         model = Doctor
         fields = [
@@ -127,13 +134,39 @@ class DoctorDetailSerializer(serializers.ModelSerializer):
             'email', 'phone', 'department', 'department_name', 'specialization',
             'qualification', 'experience_years', 'consultation_fee',
             'room_number', 'avg_consult_minutes', 'available_days',
-            'is_available', 'created_at'
+            'is_available', 'waiting_patients_count', 'estimated_wait_time',
+            'today_total_tokens', 'current_serving_token', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
 
     def get_doctor_name(self, obj):
         full_name = obj.user.get_full_name()
         return f"Dr. {full_name}" if full_name else f"Dr. {obj.user.username}"
+
+    def get_waiting_patients_count(self, obj):
+        from apps.opd.models import Token
+        from django.utils import timezone
+        today = timezone.now().date()
+        return Token.objects.filter(doctor=obj, appointment_date=today, status='waiting').count()
+
+    def get_estimated_wait_time(self, obj):
+        waiting_count = self.get_waiting_patients_count(obj)
+        avg_mins = obj.avg_consult_minutes or 15
+        return waiting_count * avg_mins
+
+    def get_today_total_tokens(self, obj):
+        from apps.opd.models import Queue
+        from django.utils import timezone
+        today = timezone.now().date()
+        queue = Queue.objects.filter(doctor=obj, queue_date=today).first()
+        return queue.total_tokens if queue else 0
+
+    def get_current_serving_token(self, obj):
+        from apps.opd.models import Queue
+        from django.utils import timezone
+        today = timezone.now().date()
+        queue = Queue.objects.filter(doctor=obj, queue_date=today).first()
+        return queue.current_token if queue else 0
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):

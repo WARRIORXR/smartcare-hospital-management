@@ -103,17 +103,25 @@ const PatientDashboard = () => {
           </div>
           <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
             <button
-              onClick={() => navigate('/patient/doctors')}
+              onClick={() => navigate('/patient/book-token')}
               className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 transition shadow-xs"
             >
-              👨‍⚕️ View Doctor Directory & Rooms
+              🎟️ Book OPD Token (Live Queue)
             </button>
-            <button
-              onClick={() => navigate('/patient/tokens')}
-              className="w-full py-1.5 px-4 rounded-lg bg-blue-50 text-blue-700 font-medium text-xs hover:bg-blue-100 transition"
-            >
-              🎟️ My OPD Tokens & Live Queue
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => navigate('/patient/tokens')}
+                className="w-full py-1.5 px-2 rounded-lg bg-blue-50 text-blue-700 font-medium text-xs hover:bg-blue-100 transition text-center"
+              >
+                📱 My Tokens
+              </button>
+              <button
+                onClick={() => navigate('/patient/doctors')}
+                className="w-full py-1.5 px-2 rounded-lg bg-gray-100 text-gray-700 font-medium text-xs hover:bg-gray-200 transition text-center"
+              >
+                👨‍⚕️ Doctor List
+              </button>
+            </div>
           </div>
         </div>
 

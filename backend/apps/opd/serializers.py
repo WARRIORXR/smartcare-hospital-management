@@ -23,8 +23,11 @@ class TokenSerializer(serializers.ModelSerializer):
     room_number = serializers.CharField(source='doctor.room_number', read_only=True)
     avg_consult_minutes = serializers.IntegerField(source='doctor.avg_consult_minutes', read_only=True)
     queue_position = serializers.SerializerMethodField()
+    tokens_ahead = serializers.SerializerMethodField()
     estimated_wait_minutes = serializers.SerializerMethodField()
+    approx_waiting_time = serializers.SerializerMethodField()
     current_serving_token = serializers.SerializerMethodField()
+    qr_data = serializers.SerializerMethodField()
 
     class Meta:
         model = Token
@@ -33,8 +36,9 @@ class TokenSerializer(serializers.ModelSerializer):
             'patient_code', 'doctor', 'doctor_name', 'department',
             'department_name', 'room_number', 'avg_consult_minutes',
             'appointment_date', 'status', 'priority', 'symptoms',
-            'is_emergency', 'queue_position', 'estimated_wait_minutes',
-            'current_serving_token', 'created_at'
+            'is_emergency', 'queue_position', 'tokens_ahead',
+            'estimated_wait_minutes', 'approx_waiting_time',
+            'current_serving_token', 'qr_data', 'created_at'
         ]
         read_only_fields = ['id', 'token_code', 'token_number', 'created_at']
 
@@ -52,33 +56,51 @@ class TokenSerializer(serializers.ModelSerializer):
             return obj.doctor.department.name
         return 'General'
 
-    def get_queue_position(self, obj):
+    def get_tokens_ahead(self, obj):
         """
-        Calculates how many patients are waiting before this token today.
-        0 means this patient is currently being called or is next!
+        Exact count of patients waiting ahead of this token.
+        0 means this patient is currently next in line!
         """
         if obj.status != 'waiting':
             return 0
 
-        # Tokens waiting before this one for the same doctor and date
-        count_ahead = Token.objects.filter(
+        return Token.objects.filter(
             doctor=obj.doctor,
             appointment_date=obj.appointment_date,
             status='waiting',
             token_number__lt=obj.token_number
         ).count()
 
-        return count_ahead + 1
-
-    def get_estimated_wait_minutes(self, obj):
+    def get_queue_position(self, obj):
         """
-        Estimated wait time in minutes = queue_position * doctor's avg consult minutes.
+        Position in line (1 = next, 2 = 2nd in line, etc.)
         """
         if obj.status != 'waiting':
             return 0
-        pos = self.get_queue_position(obj)
-        consult_time = obj.doctor.avg_consult_minutes or 15
-        return pos * consult_time
+        return self.get_tokens_ahead(obj) + 1
+
+    def get_approx_waiting_time(self, obj):
+        """
+        Approx waiting time = tokens ahead x doctor avg consultation time.
+        """
+        if obj.status != 'waiting':
+            return 0
+        ahead = self.get_tokens_ahead(obj)
+        avg_mins = obj.doctor.avg_consult_minutes or 15
+        return ahead * avg_mins
+
+    def get_estimated_wait_minutes(self, obj):
+        return self.get_approx_waiting_time(obj)
+
+    def get_qr_data(self, obj):
+        return (
+            f"SMARTCARE-TOKEN:{obj.token_code}|"
+            f"PATIENT:{obj.patient.patient_id}|"
+            f"DOCTOR:Dr.{obj.doctor.user.last_name}|"
+            f"ROOM:{obj.doctor.room_number}|"
+            f"DATE:{obj.appointment_date}|"
+            f"PRIORITY:{obj.priority.upper()}"
+        )
 
     def get_current_serving_token(self, obj):
         """

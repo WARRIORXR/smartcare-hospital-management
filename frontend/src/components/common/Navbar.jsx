@@ -81,14 +81,14 @@ const Navbar = () => {
                 {user.role === 'patient' && (
                   <>
                     <Link
-                      to="/patient/doctors"
+                      to="/patient/book-token"
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                        isCurrent('/patient/doctors')
+                        isCurrent('/patient/book-token')
                           ? 'bg-blue-50 text-blue-700'
                           : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
-                      Doctors & Clinics
+                      Book Token
                     </Link>
                     <Link
                       to="/patient/tokens"
@@ -99,6 +99,16 @@ const Navbar = () => {
                       }`}
                     >
                       🎟️ My Tokens
+                    </Link>
+                    <Link
+                      to="/patient/doctors"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/patient/doctors')
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      Doctors
                     </Link>
                   </>
                 )}
