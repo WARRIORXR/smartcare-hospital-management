@@ -131,6 +131,17 @@ const DoctorDashboard = () => {
           </div>
 
           <div className="flex items-center space-x-3">
+            <a
+              href={queueData?.doctor?.id ? `/display/${queueData.doctor.id}` : '/display'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-2 rounded-xl bg-blue-500 hover:bg-blue-400 text-white text-xs font-bold transition flex items-center space-x-1 shadow-sm"
+              title="Open public TV screen display in a new window"
+            >
+              <span>📺</span>
+              <span>Open TV Display ↗</span>
+            </a>
+
             <button
               onClick={() => loadQueue(false)}
               className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition flex items-center space-x-1"

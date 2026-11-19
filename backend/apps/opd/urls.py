@@ -14,9 +14,13 @@ from .views import (
     DoctorCallNextView,
     DoctorCompleteView,
     DoctorSkipView,
+    PublicDisplayQueueView,
 )
 
 urlpatterns = [
+    # Public TV Display Screen (no login required)
+    path('public/display/<int:doctor_id>/', PublicDisplayQueueView.as_view(), name='public_display_queue'),
+
     # Patient token generation & tracking
     path('tokens/generate/', TokenGenerateView.as_view(), name='token_generate'),
     path('tokens/my-tokens/', MyTokensView.as_view(), name='my_tokens'),

@@ -54,6 +54,12 @@ export const opdService = {
     const response = await api.post('/opd/doctor/skip/', payload);
     return response.data;
   },
+
+  // ─── PUBLIC TV DISPLAY APIS (NO AUTH REQUIRED) ───
+  getPublicDisplayData: async (doctorId) => {
+    const response = await api.get(`/opd/public/display/${doctorId}/`);
+    return response.data;
+  },
 };
 
 export default opdService;

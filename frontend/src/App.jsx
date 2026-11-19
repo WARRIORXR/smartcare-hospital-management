@@ -22,6 +22,7 @@ import AdminDoctorManagement from './pages/admin/AdminDoctorManagement';
 import DoctorList from './pages/patient/DoctorList';
 import MyTokens from './pages/patient/MyTokens';
 import BookTokenPage from './pages/patient/BookTokenPage';
+import PublicDisplayScreen from './pages/public/PublicDisplayScreen';
 
 // Route Guard
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -53,6 +54,10 @@ function App() {
           {/* Public Authentication Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+
+          {/* Public TV Queue Display Screen (No Login Required) */}
+          <Route path="/display/:doctorId" element={<PublicDisplayScreen />} />
+          <Route path="/display" element={<PublicDisplayScreen />} />
 
           {/* Role Dispatcher Route */}
           <Route path="/dashboard" element={<RoleDispatcher />} />

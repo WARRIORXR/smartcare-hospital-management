@@ -374,3 +374,75 @@ class DoctorSkipView(APIView):
             "message": f"Token {token.token_code} marked as skipped.",
             "token": TokenSerializer(token).data
         }, status=status.HTTP_200_OK)
+
+
+# ─────────────────────────────────────────────
+# PUBLIC DISPLAY SCREEN (FOR TV MONITORS / WAITING LOUNGE)
+# ─────────────────────────────────────────────
+
+class PublicDisplayQueueView(APIView):
+    """
+    GET /api/opd/public/display/<int:doctor_id>/
+    Public endpoint for waiting lounge TV monitors.
+    Requires NO authentication.
+    Returns:
+      - Doctor details & Clinic Room
+      - Now Serving token (status='called')
+      - Next 5 waiting tokens in strict priority order
+      - Today's queue statistics
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, doctor_id):
+        doctor = get_object_or_404(
+            Doctor.objects.select_related('user', 'department'),
+            id=doctor_id
+        )
+        today = timezone.now().date()
+
+        queue, _ = Queue.objects.get_or_create(
+            doctor=doctor,
+            queue_date=today,
+            defaults={
+                'avg_consult_minutes': doctor.avg_consult_minutes or 15,
+                'total_tokens': 0,
+                'current_token': 0,
+            }
+        )
+
+        all_today_tokens = Token.objects.filter(
+            doctor=doctor,
+            appointment_date=today
+        ).select_related('patient', 'patient__user', 'department')
+
+        # Now Serving Token (called into room)
+        now_serving = all_today_tokens.filter(status__in=['called', 'in_progress']).first()
+
+        # Next 5 Waiting Tokens (priority order: Emergency -> Senior Citizen -> Normal)
+        next_5_tokens = all_today_tokens.filter(status='waiting').annotate(
+            priority_rank=get_priority_order()
+        ).order_by('priority_rank', 'token_number')[:5]
+
+        waiting_count = all_today_tokens.filter(status='waiting').count()
+        completed_count = all_today_tokens.filter(status='completed').count()
+
+        return Response({
+            "doctor": {
+                "id": doctor.id,
+                "name": f"Dr. {doctor.user.get_full_name() or doctor.user.username}",
+                "department": doctor.department.name if doctor.department else "General OPD",
+                "room_number": doctor.room_number or "Room 101",
+                "avg_consult_minutes": doctor.avg_consult_minutes or 15,
+                "is_available": doctor.is_available,
+            },
+            "now_serving": TokenSerializer(now_serving).data if now_serving else None,
+            "next_tokens": TokenSerializer(next_5_tokens, many=True).data,
+            "stats": {
+                "current_token_number": queue.current_token,
+                "waiting_count": waiting_count,
+                "completed_count": completed_count,
+                "total_today": all_today_tokens.count(),
+            },
+            "server_time": timezone.now().strftime("%H:%M:%S"),
+            "server_date": today.strftime("%d %b %Y"),
+        }, status=status.HTTP_200_OK)
