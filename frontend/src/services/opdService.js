@@ -1,25 +1,19 @@
 /**
  * src/services/opdService.js
  * ---------------------------
- * Network calls for OPD Token Generation and Queue Tracking.
+ * Network calls for OPD Token Generation, Patient Queue Tracking,
+ * and Doctor Consultation Controls.
  */
 
 import api from './api';
 
 export const opdService = {
-  /**
-   * Generate an OPD consultation token
-   * @param {Object} payload { doctor, priority, symptoms, appointment_date }
-   */
+  // ─── PATIENT TOKEN APIS ───
   generateToken: async (payload) => {
     const response = await api.post('/opd/tokens/generate/', payload);
     return response.data;
   },
 
-  /**
-   * Get all tokens for the logged-in patient
-   * @param {boolean} activeOnly - If true, only returns waiting & in_progress tokens
-   */
   getMyTokens: async (activeOnly = false) => {
     const response = await api.get('/opd/tokens/my-tokens/', {
       params: { active: activeOnly },
@@ -27,19 +21,37 @@ export const opdService = {
     return response.data;
   },
 
-  /**
-   * Get real-time status of a specific token
-   */
   getTokenById: async (id) => {
     const response = await api.get(`/opd/tokens/${id}/`);
     return response.data;
   },
 
-  /**
-   * Cancel a waiting token
-   */
   cancelToken: async (id) => {
     const response = await api.post(`/opd/tokens/${id}/cancel/`);
+    return response.data;
+  },
+
+  // ─── DOCTOR QUEUE APIS ───
+  getDoctorQueue: async () => {
+    const response = await api.get('/opd/doctor/queue/');
+    return response.data;
+  },
+
+  callNextPatient: async (tokenId = null) => {
+    const payload = tokenId ? { token_id: tokenId } : {};
+    const response = await api.post('/opd/doctor/call-next/', payload);
+    return response.data;
+  },
+
+  completeConsultation: async (tokenId = null) => {
+    const payload = tokenId ? { token_id: tokenId } : {};
+    const response = await api.post('/opd/doctor/complete/', payload);
+    return response.data;
+  },
+
+  skipPatient: async (tokenId = null) => {
+    const payload = tokenId ? { token_id: tokenId } : {};
+    const response = await api.post('/opd/doctor/skip/', payload);
     return response.data;
   },
 };

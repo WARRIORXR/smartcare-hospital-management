@@ -31,6 +31,7 @@ class Token(models.Model):
 
     STATUS_CHOICES = [
         ('waiting',    'Waiting'),      # Patient is in queue
+        ('called',     'Called'),       # Doctor has called patient into room
         ('in_progress','In Progress'),  # Doctor is seeing this patient now
         ('completed',  'Completed'),    # Visit done
         ('cancelled',  'Cancelled'),    # Patient left / cancelled

@@ -18,6 +18,9 @@ class TokenSerializer(serializers.ModelSerializer):
     """
     patient_name = serializers.SerializerMethodField()
     patient_code = serializers.CharField(source='patient.patient_id', read_only=True)
+    patient_blood_group = serializers.CharField(source='patient.blood_group', read_only=True)
+    patient_gender = serializers.CharField(source='patient.gender', read_only=True)
+    patient_phone = serializers.CharField(source='patient.user.phone', read_only=True)
     doctor_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
     room_number = serializers.CharField(source='doctor.room_number', read_only=True)
@@ -33,7 +36,8 @@ class TokenSerializer(serializers.ModelSerializer):
         model = Token
         fields = [
             'id', 'token_code', 'token_number', 'patient', 'patient_name',
-            'patient_code', 'doctor', 'doctor_name', 'department',
+            'patient_code', 'patient_blood_group', 'patient_gender', 'patient_phone',
+            'doctor', 'doctor_name', 'department',
             'department_name', 'room_number', 'avg_consult_minutes',
             'appointment_date', 'status', 'priority', 'symptoms',
             'is_emergency', 'queue_position', 'tokens_ahead',
