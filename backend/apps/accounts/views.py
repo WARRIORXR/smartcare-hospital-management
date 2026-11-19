@@ -205,3 +205,137 @@ class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = instance.user
         instance.delete()
         user.delete()
+
+
+# ─────────────────────────────────────────────
+# 6. Complete Unified Patient Journey API (Step 13)
+# ─────────────────────────────────────────────
+class PatientJourneyView(APIView):
+    """
+    GET /api/accounts/patients/<id>/journey/
+    Connects all 3 modules in one seamless patient journey:
+      - Module 1: OPD Consultation Tokens & Doctors
+      - Module 2: Inpatient Bed Allocation & Admissions
+      - Module 3: Blood Bank Requests & Matching Donors
+    Linked through the Patient ID.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        patient = Patient.objects.filter(Q(pk=pk) | Q(user_id=pk)).first()
+        if not patient:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Patient profile not found.")
+
+        # 1. Module 1: OPD Tokens
+        from apps.opd.models import Token
+        from apps.opd.serializers import TokenSerializer
+        tokens_qs = Token.objects.filter(patient=patient).select_related(
+            'doctor__user', 'doctor__department', 'department'
+        ).order_by('-appointment_date', '-created_at')
+
+        tokens_data = []
+        for t in tokens_qs:
+            tokens_data.append({
+                "id": t.id,
+                "token_code": t.token_code,
+                "token_number": t.token_number,
+                "doctor_name": f"Dr. {t.doctor.user.get_full_name() or t.doctor.user.username}",
+                "department_name": t.department.name if t.department else (t.doctor.department.name if t.doctor and t.doctor.department else 'General'),
+                "room_number": t.doctor.room_number if t.doctor else 'OPD',
+                "status": t.status,
+                "status_display": t.get_status_display(),
+                "priority": t.priority,
+                "symptoms": t.symptoms,
+                "appointment_date": t.appointment_date,
+                "created_at": t.created_at,
+            })
+
+        # 2. Module 2: Inpatient Bed Admissions
+        from apps.beds.models import Admission
+        admissions_qs = Admission.objects.filter(patient=patient).select_related(
+            'bed__ward', 'attending_doctor__user', 'token'
+        ).order_by('-admission_date')
+
+        active_admission = admissions_qs.filter(status='admitted').first()
+        active_admission_data = None
+        if active_admission:
+            active_admission_data = {
+                "id": active_admission.id,
+                "bed_id": active_admission.bed.id,
+                "bed_number": active_admission.bed.bed_number,
+                "ward_name": active_admission.bed.ward.name,
+                "ward_type": active_admission.bed.ward.ward_type,
+                "floor_number": active_admission.bed.ward.floor_number,
+                "attending_doctor_name": f"Dr. {active_admission.attending_doctor.user.get_full_name() or active_admission.attending_doctor.user.username}" if active_admission.attending_doctor else 'Assigned Staff',
+                "diagnosis": active_admission.diagnosis,
+                "admission_date": active_admission.admission_date,
+                "token_code": active_admission.token.token_code if active_admission.token else None,
+            }
+
+        admissions_history = []
+        for a in admissions_qs:
+            admissions_history.append({
+                "id": a.id,
+                "bed_number": a.bed.bed_number,
+                "ward_name": a.bed.ward.name,
+                "ward_type": a.bed.ward.ward_type,
+                "status": a.status,
+                "diagnosis": a.diagnosis,
+                "admission_date": a.admission_date,
+                "discharge_date": a.discharge_date,
+                "discharge_notes": a.discharge_notes,
+            })
+
+        # 3. Module 3: Blood Bank Requests
+        from apps.bloodbank.models import BloodRequest, BloodStock
+        blood_requests_qs = BloodRequest.objects.filter(patient=patient).order_by('-created_at')
+
+        blood_requests_data = []
+        for br in blood_requests_qs:
+            stock = BloodStock.objects.filter(blood_group=br.blood_group).first()
+            available = stock.units_available if stock else 0
+            blood_requests_data.append({
+                "id": br.id,
+                "blood_group": br.blood_group,
+                "units_required": br.units_required,
+                "units_provided": br.units_provided,
+                "priority": br.priority,
+                "status": br.status,
+                "hospital_ward": br.hospital_ward,
+                "purpose": br.purpose,
+                "required_by_date": br.required_by_date,
+                "notes": br.notes,
+                "available_stock_now": available,
+                "is_stock_low": available < 3 or available < br.units_required,
+                "created_at": br.created_at,
+            })
+
+        return Response({
+            "patient": {
+                "id": patient.id,
+                "patient_code": patient.patient_id or f"PAT-{patient.id:04d}",
+                "name": patient.user.get_full_name() or patient.user.username,
+                "username": patient.user.username,
+                "email": patient.user.email,
+                "phone": patient.user.phone or 'N/A',
+                "blood_group": patient.blood_group or 'Not Specified',
+                "gender": patient.gender or 'Not Specified',
+                "address": patient.address or 'N/A',
+                "emergency_contact": f"{patient.emergency_contact_name} ({patient.emergency_contact_phone})" if patient.emergency_contact_name else 'N/A',
+            },
+            "journey_summary": {
+                "total_opd_visits": len(tokens_data),
+                "is_currently_admitted": active_admission is not None,
+                "current_bed": active_admission.bed.bed_number if active_admission else None,
+                "current_ward": active_admission.bed.ward.name if active_admission else None,
+                "total_blood_requests": len(blood_requests_data),
+                "pending_blood_requests": sum(1 for b in blood_requests_data if b['status'] == 'pending'),
+            },
+            "module_1_opd": tokens_data,
+            "module_2_beds": {
+                "active_admission": active_admission_data,
+                "admissions_history": admissions_history,
+            },
+            "module_3_bloodbank": blood_requests_data,
+        }, status=status.HTTP_200_OK)

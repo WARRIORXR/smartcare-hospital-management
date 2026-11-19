@@ -13,6 +13,7 @@ from .views import (
     DepartmentDetailView,
     DoctorListCreateView,
     DoctorDetailView,
+    PatientJourneyView,
 )
 
 urlpatterns = [
@@ -20,6 +21,9 @@ urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='account_login'),
     path('register/', RegisterView.as_view(), name='account_register'),
     path('profile/', UserProfileView.as_view(), name='account_profile'),
+
+    # Patient Journey (Unified across Module 1, 2, 3)
+    path('patients/<int:pk>/journey/', PatientJourneyView.as_view(), name='patient_journey'),
 
     # Department CRUD endpoints (Admin Add/Edit/Delete, Public List)
     path('departments/', DepartmentListCreateView.as_view(), name='department_list_create'),

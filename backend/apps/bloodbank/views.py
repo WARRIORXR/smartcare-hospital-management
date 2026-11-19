@@ -319,9 +319,15 @@ class BloodRequestListCreateView(APIView):
         priority = serializer.validated_data.get('priority', 'normal')
         patient_name = serializer.validated_data.get('patient_name', '')
 
-        # Resolve Patient
+        # Resolve Patient (linked by patient ID)
         patient = None
-        if hasattr(request.user, 'patient_profile'):
+        patient_id = request.data.get('patient_id') or request.data.get('patient')
+        if patient_id:
+            from apps.accounts.models import Patient
+            patient = Patient.objects.filter(pk=patient_id).first()
+            if patient and not patient_name:
+                patient_name = patient.user.get_full_name() or patient.user.username
+        elif hasattr(request.user, 'patient_profile'):
             patient = request.user.patient_profile
             if not patient_name:
                 patient_name = request.user.get_full_name() or request.user.username

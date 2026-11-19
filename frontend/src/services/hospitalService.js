@@ -55,6 +55,12 @@ export const hospitalService = {
     const response = await api.delete(`/accounts/doctors/${id}/`);
     return response.data;
   },
+
+  // ─── UNIFIED PATIENT JOURNEY (Step 13) ───
+  getPatientJourney: async (patientId) => {
+    const response = await api.get(`/accounts/patients/${patientId}/journey/`);
+    return response.data;
+  },
 };
 
 export default hospitalService;
