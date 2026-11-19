@@ -1,37 +1,77 @@
-// src/App.jsx
-// ------------
-// Root component for SmartCare.
-// React Router will be set up here in future steps.
-// For now it shows a "Setup Successful" landing page.
+/**
+ * src/App.jsx
+ * -----------
+ * Root Application Component with React Router and Role-Based Route Protection.
+ */
+
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+
+// Auth Pages
+import Login from './pages/Login';
+import Register from './pages/Register';
+
+// Role Dashboards
+import PatientDashboard from './pages/patient/PatientDashboard';
+import DoctorDashboard from './pages/doctor/DoctorDashboard';
+import AdminDashboard from './pages/admin/AdminDashboard';
+
+// Route Guard
+import ProtectedRoute from './components/common/ProtectedRoute';
+
+// Helper component that redirects root / and /dashboard to role-specific dashboard
+const RoleDispatcher = () => {
+  const { user, isAuthenticated, loading, getDashboardPath } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={getDashboardPath(user.role)} replace />;
+};
 
 function App() {
   return (
-    <div className="min-h-screen bg-blue-50 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-lg p-10 text-center max-w-md">
-        {/* Hospital cross icon */}
-        <div className="text-6xl mb-4">🏥</div>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Authentication Routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
-        <h1 className="text-3xl font-bold text-blue-700 mb-2">
-          SmartCare
-        </h1>
-        <p className="text-gray-500 text-sm mb-6">
-          Integrated Hospital Management System
-        </p>
+          {/* Role Dispatcher Route */}
+          <Route path="/dashboard" element={<RoleDispatcher />} />
 
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-          <p className="text-green-700 font-semibold text-sm">
-            ✅ React + Tailwind CSS Setup Successful!
-          </p>
-        </div>
+          {/* Protected Patient Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['patient']} />}>
+            <Route path="/patient/dashboard" element={<PatientDashboard />} />
+          </Route>
 
-        <div className="text-left text-sm text-gray-600 space-y-1">
-          <p>📦 <strong>Frontend:</strong> React + Vite + Tailwind CSS</p>
-          <p>🔗 <strong>Backend:</strong> Django REST Framework</p>
-          <p>🗄️ <strong>Database:</strong> MySQL</p>
-          <p>🔐 <strong>Auth:</strong> JWT Tokens</p>
-        </div>
-      </div>
-    </div>
+          {/* Protected Doctor Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['doctor']} />}>
+            <Route path="/doctor/dashboard" element={<DoctorDashboard />} />
+          </Route>
+
+          {/* Protected Admin Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          </Route>
+
+          {/* Default Fallback Route */}
+          <Route path="/" element={<RoleDispatcher />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
