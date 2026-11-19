@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import hospitalService from '../../services/hospitalService';
+import BookTokenModal from '../../components/opd/BookTokenModal';
 
 const DoctorList = () => {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ const DoctorList = () => {
   const [doctors, setDoctors] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [bookingDoctor, setBookingDoctor] = useState(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -207,7 +209,7 @@ const DoctorList = () => {
               {/* Action Button */}
               <div className="mt-6 pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => alert(`OPD Token booking for ${doc.doctor_name} will be active in Step 5!`)}
+                  onClick={() => setBookingDoctor(doc)}
                   disabled={!doc.is_available}
                   className="w-full py-2.5 px-4 rounded-xl font-semibold text-xs transition shadow-sm flex items-center justify-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white"
                 >
@@ -218,6 +220,15 @@ const DoctorList = () => {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Token Booking Modal */}
+      {bookingDoctor && (
+        <BookTokenModal
+          doctor={bookingDoctor}
+          onClose={() => setBookingDoctor(null)}
+          onSuccess={() => setBookingDoctor(null)}
+        />
       )}
     </div>
   );

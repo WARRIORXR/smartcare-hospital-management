@@ -20,6 +20,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 // Module Management & Directory Pages
 import AdminDoctorManagement from './pages/admin/AdminDoctorManagement';
 import DoctorList from './pages/patient/DoctorList';
+import MyTokens from './pages/patient/MyTokens';
 
 // Route Guard
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -59,6 +60,7 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={['patient']} />}>
             <Route path="/patient/dashboard" element={<PatientDashboard />} />
             <Route path="/patient/doctors" element={<DoctorList />} />
+            <Route path="/patient/tokens" element={<MyTokens />} />
           </Route>
 
           {/* Protected Doctor Routes */}

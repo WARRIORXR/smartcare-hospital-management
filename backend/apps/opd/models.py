@@ -8,7 +8,7 @@ Tables created:
   - opd_queue    (tracks queue position and call status)
 
 Flow:
-  Reception registers patient → Issues Token → Token appears in Queue
+  Patient selects Doctor → Generates Token (e.g. MED-001) → Status: Waiting
   Doctor calls next token → Status updates in real time
 """
 
@@ -24,7 +24,9 @@ class Token(models.Model):
     An OPD Token is issued to a patient for a specific doctor
     on a specific date. Token number resets daily.
 
-    Example: Token #5 for Dr. Sharma on 2024-01-15
+    Format: MED-001, CAR-002, ENT-003, etc.
+    Priority: Normal, Senior Citizen, Emergency
+    Status: Waiting, In Progress, Completed, Cancelled, Skipped
     """
 
     STATUS_CHOICES = [
@@ -33,6 +35,12 @@ class Token(models.Model):
         ('completed',  'Completed'),    # Visit done
         ('cancelled',  'Cancelled'),    # Patient left / cancelled
         ('skipped',    'Skipped'),      # Doctor skipped this patient
+    ]
+
+    PRIORITY_CHOICES = [
+        ('normal',         'Normal'),
+        ('senior_citizen', 'Senior Citizen'),
+        ('emergency',      'Emergency'),
     ]
 
     # Which patient got this token
@@ -54,10 +62,18 @@ class Token(models.Model):
         Department,
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name='tokens'
     )
 
-    # Token number for the day (e.g. 1, 2, 3...)
+    # Formatted token code (e.g. MED-001, CAR-005)
+    token_code = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Formatted token code e.g. MED-001"
+    )
+
+    # Sequential token number for the day (e.g. 1, 2, 3...)
     token_number = models.PositiveIntegerField(
         help_text="Sequential number for this doctor on this date"
     )
@@ -74,13 +90,21 @@ class Token(models.Model):
         default='waiting'
     )
 
+    # Priority field
+    priority = models.CharField(
+        max_length=20,
+        choices=PRIORITY_CHOICES,
+        default='normal',
+        help_text="Patient priority: Normal, Senior Citizen, Emergency"
+    )
+
     # Additional symptoms / reason for visit (optional)
     symptoms = models.TextField(
         blank=True,
         help_text="Brief symptoms described by patient"
     )
 
-    # Priority: normal patients vs emergency
+    # Flag for emergency (kept for fast filtering/indexing)
     is_emergency = models.BooleanField(
         default=False,
         help_text="Emergency patients go to top of queue"
@@ -92,17 +116,29 @@ class Token(models.Model):
 
     class Meta:
         db_table = 'opd_tokens'
-        # Ensure token numbers are unique per doctor per day
         unique_together = ('doctor', 'appointment_date', 'token_number')
         ordering = ['appointment_date', 'token_number']
 
+    def save(self, *args, **kwargs):
+        # Auto-sync is_emergency flag
+        if self.priority == 'emergency':
+            self.is_emergency = True
+
+        # Auto-generate token_code if missing (e.g. MED-001)
+        if not self.token_code and self.token_number:
+            dept_name = ''
+            if self.department:
+                dept_name = self.department.name
+            elif self.doctor and self.doctor.department:
+                dept_name = self.doctor.department.name
+            
+            prefix = dept_name[:3].upper() if len(dept_name) >= 3 else 'MED'
+            self.token_code = f"{prefix}-{self.token_number:03d}"
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return (
-            f"Token #{self.token_number} | "
-            f"{self.patient} | "
-            f"Dr.{self.doctor.user.last_name} | "
-            f"{self.appointment_date} | {self.status}"
-        )
+        return f"{self.token_code or f'#{self.token_number}'} | {self.patient} | Dr. {self.doctor.user.last_name} | {self.status}"
 
 
 # ─────────────────────────────────────────────
@@ -111,13 +147,9 @@ class Token(models.Model):
 class Queue(models.Model):
     """
     Tracks the LIVE queue state for a specific doctor on a date.
-    Think of it as the queue board displayed at reception.
-
     - current_token: which token number is being served RIGHT NOW
     - total_tokens: how many tokens were issued today
     - is_active: whether the doctor's OPD session is open
-
-    One Queue record per Doctor per Day.
     """
 
     doctor = models.ForeignKey(
@@ -130,7 +162,7 @@ class Queue(models.Model):
         help_text="Date of this queue session"
     )
 
-    # Which token is currently being called
+    # Which token is currently being called (0 means none yet)
     current_token = models.PositiveIntegerField(
         default=0,
         help_text="0 means no token called yet today"
@@ -147,9 +179,9 @@ class Queue(models.Model):
         help_text="Set False to close OPD for the day"
     )
 
-    # Optional: estimated time per patient in minutes
+    # Average consultation time in minutes (falls back to doctor's avg_consult_minutes)
     avg_consult_minutes = models.PositiveIntegerField(
-        default=10,
+        default=15,
         help_text="Average consultation time (minutes)"
     )
 
@@ -158,13 +190,12 @@ class Queue(models.Model):
 
     class Meta:
         db_table = 'opd_queue'
-        # Only one queue per doctor per day
         unique_together = ('doctor', 'queue_date')
         ordering = ['-queue_date']
 
     def __str__(self):
         return (
-            f"Queue | Dr.{self.doctor.user.last_name} | "
+            f"Queue | Dr. {self.doctor.user.last_name} | "
             f"{self.queue_date} | "
             f"Current: {self.current_token}/{self.total_tokens}"
         )

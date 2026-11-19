@@ -109,10 +109,10 @@ const PatientDashboard = () => {
               👨‍⚕️ View Doctor Directory & Rooms
             </button>
             <button
-              onClick={() => alert('OPD Token Queue booking will be activated in Step 5!')}
+              onClick={() => navigate('/patient/tokens')}
               className="w-full py-1.5 px-4 rounded-lg bg-blue-50 text-blue-700 font-medium text-xs hover:bg-blue-100 transition"
             >
-              Book OPD Token (Queue)
+              🎟️ My OPD Tokens & Live Queue
             </button>
           </div>
         </div>

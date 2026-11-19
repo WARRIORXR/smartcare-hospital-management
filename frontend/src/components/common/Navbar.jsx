@@ -79,16 +79,28 @@ const Navbar = () => {
                 </Link>
 
                 {user.role === 'patient' && (
-                  <Link
-                    to="/patient/doctors"
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                      isCurrent('/patient/doctors')
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    Doctors & Clinics
-                  </Link>
+                  <>
+                    <Link
+                      to="/patient/doctors"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/patient/doctors')
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      Doctors & Clinics
+                    </Link>
+                    <Link
+                      to="/patient/tokens"
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        isCurrent('/patient/tokens')
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      🎟️ My Tokens
+                    </Link>
+                  </>
                 )}
 
                 {user.role === 'admin' && (
