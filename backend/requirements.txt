@@ -1,0 +1,18 @@
+# Django core
+Django==4.2.16
+djangorestframework==3.15.2
+
+# JWT Authentication
+djangorestframework-simplejwt==5.3.1
+
+# MySQL database connector
+mysqlclient==2.2.4
+
+# CORS headers (allow React frontend to call Django API)
+django-cors-headers==4.4.0
+
+# Environment variable management
+python-decouple==3.8
+
+# Utilities
+Pillow==10.4.0
