@@ -61,6 +61,12 @@ export const hospitalService = {
     const response = await api.get(`/accounts/patients/${patientId}/journey/`);
     return response.data;
   },
+
+  // ─── ADMIN ANALYTICS DASHBOARD (Step 14) ───
+  getAdminAnalytics: async () => {
+    const response = await api.get('/accounts/admin/analytics/');
+    return response.data;
+  },
 };
 
 export default hospitalService;

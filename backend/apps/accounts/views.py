@@ -339,3 +339,244 @@ class PatientJourneyView(APIView):
             },
             "module_3_bloodbank": blood_requests_data,
         }, status=status.HTTP_200_OK)
+
+
+# ─────────────────────────────────────────────
+# 7. Admin Analytics Dashboard API (Step 14)
+# ─────────────────────────────────────────────
+class AdminAnalyticsDashboardView(APIView):
+    """
+    GET /api/accounts/admin/analytics/
+    Calculates hospital-wide analytics directly from the database:
+      1. Total tokens today (and breakdown by status)
+      2. Average waiting time (in minutes)
+      3. Busiest department (name + token count)
+      4. Bed occupancy percentage (and breakdown by ward)
+      5. Blood stock low alerts (< 3 units)
+    Also supplies formatted data arrays for Chart.js visualizations.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import timedelta
+        from django.utils import timezone
+        from django.db.models import Count, Avg, Q, Sum
+        from apps.opd.models import Token, Queue
+        from apps.beds.models import Bed, Ward, Admission
+        from apps.bloodbank.models import BloodStock, BloodRequest, Donor
+
+        today = timezone.now().date()
+
+        # 1. OPD Tokens Analytics
+        today_tokens = Token.objects.filter(appointment_date=today)
+        total_tokens_today = today_tokens.count()
+        waiting_count = today_tokens.filter(status='waiting').count()
+        called_count = today_tokens.filter(status='called').count()
+        in_progress_count = today_tokens.filter(status='in_progress').count()
+        completed_count = today_tokens.filter(status='completed').count()
+        admitted_count = today_tokens.filter(status='admitted').count()
+        skipped_count = today_tokens.filter(status='skipped').count()
+        cancelled_count = today_tokens.filter(status='cancelled').count()
+
+        # 2. Average Waiting Time (in minutes)
+        serviced_tokens = today_tokens.filter(status__in=['called', 'in_progress', 'completed'])
+        wait_times = []
+        for t in serviced_tokens:
+            diff_mins = (t.updated_at - t.created_at).total_seconds() / 60.0
+            if diff_mins >= 0:
+                wait_times.append(diff_mins)
+
+        if wait_times:
+            avg_waiting_time = round(sum(wait_times) / len(wait_times), 1)
+        else:
+            # Fallback to doctor consult average or 15 mins
+            avg_doc_time = Doctor.objects.filter(is_available=True).aggregate(Avg('avg_consult_minutes'))['avg_consult_minutes__avg'] or 15.0
+            avg_waiting_time = round(float(avg_doc_time), 1)
+
+        # 3. Busiest Department
+        # Group today's tokens by department
+        dept_counts_qs = (
+            today_tokens.exclude(department__isnull=True)
+            .values('department__id', 'department__name')
+            .annotate(token_count=Count('id'))
+            .order_by('-token_count')
+        )
+
+        busiest_dept_name = "General Medicine"
+        busiest_dept_tokens = 0
+
+        if dept_counts_qs.exists():
+            busiest = dept_counts_qs.first()
+            busiest_dept_name = busiest['department__name']
+            busiest_dept_tokens = busiest['token_count']
+        else:
+            # Fallback to all-time tokens if today has no tokens yet
+            all_time_busiest = (
+                Token.objects.exclude(department__isnull=True)
+                .values('department__name')
+                .annotate(token_count=Count('id'))
+                .order_by('-token_count')
+                .first()
+            )
+            if all_time_busiest:
+                busiest_dept_name = all_time_busiest['department__name']
+                busiest_dept_tokens = all_time_busiest['token_count']
+            else:
+                first_dept = Department.objects.first()
+                if first_dept:
+                    busiest_dept_name = first_dept.name
+
+        # Department distribution for Chart.js
+        all_departments = Department.objects.all().order_by('name')
+        dept_chart_labels = []
+        dept_chart_data = []
+        for dept in all_departments:
+            dept_chart_labels.append(dept.name)
+            # Count today's tokens, or total if today is 0
+            count_today = today_tokens.filter(department=dept).count()
+            dept_chart_data.append(count_today)
+
+        # If all counts are 0 today, show all-time counts for meaningful visualization
+        if sum(dept_chart_data) == 0:
+            dept_chart_data = [Token.objects.filter(department=dept).count() for dept in all_departments]
+
+        # 4. Bed Occupancy Percentage
+        total_beds = Bed.objects.count()
+        occupied_beds = Bed.objects.filter(status='occupied').count()
+        available_beds = Bed.objects.filter(status='available').count()
+        cleaning_beds = Bed.objects.filter(status='cleaning').count()
+        maintenance_beds = Bed.objects.filter(status__in=['maintenance', 'reserved']).count()
+
+        bed_occupancy_percentage = round((occupied_beds / total_beds * 100), 1) if total_beds > 0 else 0.0
+
+        # Ward-by-ward breakdown for Chart.js
+        wards_qs = Ward.objects.filter(is_active=True).order_by('name')
+        ward_chart_labels = []
+        ward_chart_occupied = []
+        ward_chart_available = []
+        ward_chart_percentages = []
+
+        for w in wards_qs:
+            w_total = w.beds.count()
+            w_occ = w.beds.filter(status='occupied').count()
+            w_avail = w.beds.filter(status='available').count()
+            w_pct = round((w_occ / w_total * 100), 1) if w_total > 0 else 0.0
+
+            ward_chart_labels.append(w.name)
+            ward_chart_occupied.append(w_occ)
+            ward_chart_available.append(w_avail)
+            ward_chart_percentages.append(w_pct)
+
+        # 5. Blood Stock Low Alerts (< 3 units)
+        all_blood_groups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-']
+        stocks_map = {s.blood_group: s for s in BloodStock.objects.all()}
+
+        low_stock_alerts = []
+        blood_chart_labels = []
+        blood_chart_units = []
+        blood_chart_colors = []
+        total_blood_units = 0
+
+        for bg in all_blood_groups:
+            stock = stocks_map.get(bg)
+            units = stock.units_available if stock else 0
+            total_blood_units += units
+            is_low = units < 3
+
+            if is_low:
+                low_stock_alerts.append({
+                    "blood_group": bg,
+                    "units_available": units,
+                    "minimum_threshold": 3,
+                    "shortage": max(0, 3 - units),
+                    "expiry_date": stock.expiry_date if stock else None
+                })
+
+            blood_chart_labels.append(bg)
+            blood_chart_units.append(units)
+            # Red alert color for < 3 units, green for safe
+            blood_chart_colors.append('#ef4444' if is_low else '#10b981')
+
+        # 6. Last 7 Days Daily Token Volume Trend
+        trend_labels = []
+        trend_data = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_count = Token.objects.filter(appointment_date=day).count()
+            trend_labels.append(day.strftime("%a (%d %b)"))
+            trend_data.append(day_count)
+
+        # Build Comprehensive Analytics Payload
+        data = {
+            "summary_kpis": {
+                "total_tokens_today": total_tokens_today,
+                "waiting_tokens": waiting_count,
+                "called_tokens": called_count + in_progress_count,
+                "completed_tokens": completed_count,
+                "average_waiting_time_minutes": avg_waiting_time,
+                "average_waiting_time_display": f"{avg_waiting_time} mins",
+                "busiest_department": {
+                    "name": busiest_dept_name,
+                    "tokens_count": busiest_dept_tokens,
+                },
+                "bed_occupancy_percentage": bed_occupancy_percentage,
+                "total_beds": total_beds,
+                "occupied_beds": occupied_beds,
+                "available_beds": available_beds,
+                "cleaning_beds": cleaning_beds,
+                "blood_stock_low_alerts": {
+                    "count": len(low_stock_alerts),
+                    "has_alerts": len(low_stock_alerts) > 0,
+                    "critical_groups": [item["blood_group"] for item in low_stock_alerts],
+                    "total_blood_units": total_blood_units,
+                },
+                "total_doctors": Doctor.objects.count(),
+                "available_doctors": Doctor.objects.filter(is_available=True).count(),
+                "total_patients": Patient.objects.count(),
+                "active_admissions": Admission.objects.filter(status='admitted').count(),
+                "pending_blood_requests": BloodRequest.objects.filter(status='pending').count(),
+            },
+            "charts": {
+                "token_status_distribution": {
+                    "labels": ["Waiting", "Called / In Progress", "Completed", "Admitted to Ward", "Skipped / Cancelled"],
+                    "data": [
+                        waiting_count,
+                        called_count + in_progress_count,
+                        completed_count,
+                        admitted_count,
+                        skipped_count + cancelled_count
+                    ],
+                    "colors": ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ef4444"]
+                },
+                "daily_token_trend": {
+                    "labels": trend_labels,
+                    "data": trend_data,
+                },
+                "department_tokens": {
+                    "labels": dept_chart_labels,
+                    "data": dept_chart_data,
+                },
+                "bed_status": {
+                    "labels": ["Available", "Occupied", "Cleaning", "Maintenance"],
+                    "data": [available_beds, occupied_beds, cleaning_beds, maintenance_beds],
+                    "colors": ["#10b981", "#ef4444", "#f59e0b", "#6b7280"]
+                },
+                "ward_occupancy": {
+                    "labels": ward_chart_labels,
+                    "occupied": ward_chart_occupied,
+                    "available": ward_chart_available,
+                    "percentages": ward_chart_percentages,
+                },
+                "blood_stock_levels": {
+                    "labels": blood_chart_labels,
+                    "data": blood_chart_units,
+                    "colors": blood_chart_colors,
+                    "threshold": 3
+                }
+            },
+            "alerts": {
+                "low_blood_stock": low_stock_alerts,
+            }
+        }
+
+        return Response(data, status=status.HTTP_200_OK)

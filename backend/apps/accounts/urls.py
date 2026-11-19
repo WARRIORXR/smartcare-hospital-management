@@ -14,6 +14,7 @@ from .views import (
     DoctorListCreateView,
     DoctorDetailView,
     PatientJourneyView,
+    AdminAnalyticsDashboardView,
 )
 
 urlpatterns = [
@@ -21,6 +22,9 @@ urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='account_login'),
     path('register/', RegisterView.as_view(), name='account_register'),
     path('profile/', UserProfileView.as_view(), name='account_profile'),
+
+    # Admin Hospital Analytics Dashboard (Step 14)
+    path('admin/analytics/', AdminAnalyticsDashboardView.as_view(), name='admin_analytics'),
 
     # Patient Journey (Unified across Module 1, 2, 3)
     path('patients/<int:pk>/journey/', PatientJourneyView.as_view(), name='patient_journey'),
