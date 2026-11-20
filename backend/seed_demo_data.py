@@ -389,9 +389,10 @@ def seed():
                 'name': name,
                 'blood_group': bg,
                 'city': city,
+                'age': 28,
+                'gender': 'M' if name.endswith(('Nair', 'Mehta', 'Reddy', 'Tiwari', 'Saxena')) else 'F',
                 'last_donation_date': today - timedelta(days=days_ago),
-                'is_available': True,
-                'medical_notes': 'Eligible and verified donor.',
+                'address': f"{city} Medical District",
             }
         )
     print(f"[OK] Seeded {len(donors_info)} Registered Donors across matching blood groups.")
@@ -494,11 +495,11 @@ def seed():
         units_required=2,
         defaults={
             'patient_name': 'Rahul Kumar',
-            'contact_phone': '+91-9822233301',
             'hospital_ward': 'General Ward A (Bed GEN-03)',
             'priority': 'urgent',
-            'purpose': 'Post-procedure stabilization and hemoglobin replenishment',
+            'purpose': 'surgery',
             'status': 'pending',
+            'notes': 'Post-procedure stabilization and hemoglobin replenishment',
             'required_by_date': today + timedelta(days=2),
         }
     )
@@ -508,12 +509,12 @@ def seed():
         units_required=3,
         defaults={
             'patient_name': 'Anjali Singh',
-            'contact_phone': '+91-9822233302',
             'hospital_ward': 'Intensive Care Unit (Bed ICU-01)',
             'priority': 'emergency',
-            'purpose': 'Emergency cardiac surgery standby',
+            'purpose': 'surgery',
             'status': 'approved',
             'units_provided': 3,
+            'notes': 'Emergency cardiac surgery standby',
             'required_by_date': today,
         }
     )
