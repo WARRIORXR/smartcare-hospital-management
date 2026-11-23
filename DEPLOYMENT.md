@@ -7,25 +7,33 @@ This guide walks you through deploying the **Django Backend on Render.com** and 
 ## Architecture Overview
 
 ```
-                      ┌──────────────────────────────────────┐
-                      │          CLOUDFLARE PAGES            │
-                      │   React + Vite Frontend (SPA)        │
-                      │   URL: https://<app>.pages.dev       │
-                      └──────────────────┬───────────────────┘
-                                         │  HTTPS API Calls
-                                         ▼
-                      ┌──────────────────────────────────────┐
-                      │             RENDER.COM               │
-                      │   Django 4.2 REST API + Gunicorn     │
-                      │   URL: https://<api>.onrender.com    │
-                      └──────────────────┬───────────────────┘
-                                         │  PostgreSQL
-                                         ▼
-                      ┌──────────────────────────────────────┐
-                      │          RENDER POSTGRESQL           │
-                      │   Managed Free PostgreSQL Database   │
-                      └──────────────────────────────────────┘
+                      ┌──────────────────────────────────────────────┐
+                      │              CLOUDFLARE PAGES                │
+                      │       React + Vite Frontend (SPA)            │
+                      │  URL: https://smartcare-hospital-tyr.pages.dev│
+                      └──────────────────────┬───────────────────────┘
+                                             │  HTTPS API Calls
+                                             ▼
+                      ┌──────────────────────────────────────────────┐
+                      │                 RENDER.COM                   │
+                      │       Django 4.2 REST API + Gunicorn         │
+                      │URL: https://smartcare-backend-fsb1.onrender.com│
+                      └──────────────────────┬───────────────────────┘
+                                             │  Database
+                                             ▼
+                      ┌──────────────────────────────────────────────┐
+                      │              DATABASE LAYER                  │
+                      │  SQLite / Managed Render PostgreSQL (Free)   │
+                      └──────────────────────────────────────────────┘
 ```
+
+---
+
+## 🌐 Live Deployed Application
+
+* **Frontend Web App (Cloudflare):** [https://smartcare-hospital-tyr.pages.dev](https://smartcare-hospital-tyr.pages.dev)
+* **Backend REST API (Render):** [https://smartcare-backend-fsb1.onrender.com/api/](https://smartcare-backend-fsb1.onrender.com/api/)
+* **GitHub Repository:** [https://github.com/WARRIORXR/smartcare-hospital-management](https://github.com/WARRIORXR/smartcare-hospital-management)
 
 ---
 
