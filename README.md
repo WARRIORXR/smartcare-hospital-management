@@ -1,6 +1,12 @@
 # 🏥 SmartCare – Integrated Hospital Management System
 
-> **BTech Final Year Project** | Developed with React JS + Django REST Framework + MySQL
+> **Live Production Deployment:**
+> - 🌐 **Frontend (Cloudflare):** [https://smartcare-hospital.tanishjaswal56.workers.dev](https://smartcare-hospital.tanishjaswal56.workers.dev)
+> - ⚙️ **Backend API (Render):** [https://smartcare-backend-fsb1.onrender.com/api/](https://smartcare-backend-fsb1.onrender.com/api/)
+> - 🔑 **Demo Login Credentials:**
+>   - **Admin:** `admin` / `admin123`
+>   - **Specialist Doctor:** `dr.sharma` / `doctor123`
+>   - **Patient:** `rahul.kumar` / `patient123`
 
 ---
 
