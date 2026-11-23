@@ -78,15 +78,16 @@ TEMPLATES = [
 WSGI_APPLICATION = 'smartcare.wsgi.application'
 
 # ------------------------------------------------------------------
-# DATABASE — PostgreSQL (Render production) or SQLite (dev/demo)
+# DATABASE — SQLite (default for instant zero-config deploy) or PostgreSQL
 # ------------------------------------------------------------------
 DB_ENGINE = config('DB_ENGINE', default='sqlite').lower()
+DATABASE_URL = config('DATABASE_URL', default='')
 
-if DB_ENGINE == 'postgresql' or config('DATABASE_URL', default=''):
+if DB_ENGINE == 'postgresql' or (DATABASE_URL and DB_ENGINE != 'sqlite'):
     import dj_database_url
     DATABASES = {
         'default': dj_database_url.config(
-            default=config('DATABASE_URL', default='sqlite:///db.sqlite3'),
+            default=DATABASE_URL,
             conn_max_age=600,
             conn_health_checks=True,
         )

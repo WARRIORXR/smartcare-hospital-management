@@ -1,15 +1,15 @@
 # ============================================================
 # render.yaml — Render.com Blueprint (Infrastructure as Code)
 # ============================================================
-# Deploy this by connecting your GitHub repo to Render.com
-# and it auto-detects this file.
+# Standalone Web Service using SQLite by default (bypasses Render 1-DB limit)
+# If you want PostgreSQL, just paste DATABASE_URL in Render Dashboard.
 
 services:
   # ── Django Backend API ──
   - type: web
     name: smartcare-backend
     runtime: python
-    region: singapore  # Closest to India
+    region: singapore
     plan: free
     rootDir: backend
     buildCommand: "chmod +x build.sh && ./build.sh"
@@ -22,21 +22,10 @@ services:
       - key: ALLOWED_HOSTS
         value: ".onrender.com"
       - key: FRONTEND_URL
-        sync: false  # Set manually after Cloudflare Pages deploy
-      - key: DATABASE_URL
-        fromDatabase:
-          name: smartcare-db
-          property: connectionString
+        value: "https://smartcare-hospital.pages.dev"
       - key: DB_ENGINE
-        value: postgresql
+        value: "sqlite"
       - key: PYTHON_VERSION
         value: "3.11.6"
       - key: SECURE_SSL_REDIRECT
-        value: "False"  # Render handles SSL termination
-
-  # ── PostgreSQL Database ──
-databases:
-  - name: smartcare-db
-    plan: free
-    region: singapore
-    databaseName: smartcare_db
+        value: "False"
