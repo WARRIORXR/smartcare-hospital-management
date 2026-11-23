@@ -1,6 +1,6 @@
 # 🏥 SmartCare — Integrated Hospital Management System
 
-[![Live Demo](https://img.shields.io/badge/Demo-Cloudflare%20Pages-orange?style=for-the-badge&logo=cloudflare)](https://smartcare-hospital.tanishjaswal56.workers.dev)
+[![Live Demo](https://img.shields.io/badge/Demo-Cloudflare%20Pages-orange?style=for-the-badge&logo=cloudflare)](https://smartcare-hospital-tyr.pages.dev)
 [![Backend API](https://img.shields.io/badge/API-Render-black?style=for-the-badge&logo=render)](https://smartcare-backend-fsb1.onrender.com/api/)
 [![React](https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite)](https://vitejs.dev/)
@@ -15,7 +15,7 @@
 
 | Resource | Provider | Live URL |
 |---|---|---|
-| **Frontend Web App** | **Cloudflare** | [https://smartcare-hospital.tanishjaswal56.workers.dev](https://smartcare-hospital.tanishjaswal56.workers.dev) |
+| **Frontend Web App** | **Cloudflare Pages** | [https://smartcare-hospital-tyr.pages.dev](https://smartcare-hospital-tyr.pages.dev) |
 | **Backend REST API** | **Render** | [https://smartcare-backend-fsb1.onrender.com/api/](https://smartcare-backend-fsb1.onrender.com/api/) |
 | **GitHub Repository** | **GitHub** | [https://github.com/WARRIORXR/smartcare-hospital-management](https://github.com/WARRIORXR/smartcare-hospital-management) |
 
