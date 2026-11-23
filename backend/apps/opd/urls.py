@@ -8,6 +8,7 @@ from django.urls import path
 from .views import (
     TokenGenerateView,
     MyTokensView,
+    TokenListView,
     TokenDetailView,
     TokenCancelView,
     DoctorQueueView,
@@ -22,6 +23,7 @@ urlpatterns = [
     path('public/display/<int:doctor_id>/', PublicDisplayQueueView.as_view(), name='public_display_queue'),
 
     # Patient token generation & tracking
+    path('tokens/', TokenListView.as_view(), name='token_list'),
     path('tokens/generate/', TokenGenerateView.as_view(), name='token_generate'),
     path('tokens/my-tokens/', MyTokensView.as_view(), name='my_tokens'),
     path('tokens/<int:pk>/', TokenDetailView.as_view(), name='token_detail'),

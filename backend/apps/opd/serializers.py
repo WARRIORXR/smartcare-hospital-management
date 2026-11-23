@@ -31,6 +31,7 @@ class TokenSerializer(serializers.ModelSerializer):
     approx_waiting_time = serializers.SerializerMethodField()
     current_serving_token = serializers.SerializerMethodField()
     qr_data = serializers.SerializerMethodField()
+    active_admission = serializers.SerializerMethodField()
 
     class Meta:
         model = Token
@@ -42,9 +43,24 @@ class TokenSerializer(serializers.ModelSerializer):
             'appointment_date', 'status', 'priority', 'symptoms',
             'is_emergency', 'queue_position', 'tokens_ahead',
             'estimated_wait_minutes', 'approx_waiting_time',
-            'current_serving_token', 'qr_data', 'created_at'
+            'current_serving_token', 'qr_data', 'active_admission', 'created_at'
         ]
         read_only_fields = ['id', 'token_code', 'token_number', 'created_at']
+
+    def get_active_admission(self, obj):
+        try:
+            from apps.beds.models import Admission
+            adm = Admission.objects.filter(patient=obj.patient, status='admitted').order_by('-admitted_at').first()
+            if adm:
+                return {
+                    'admission_id': adm.id,
+                    'ward_name': adm.ward.name if adm.ward else '',
+                    'bed_number': adm.bed.bed_number if adm.bed else '',
+                    'admitted_at': adm.admitted_at.isoformat() if adm.admitted_at else None
+                }
+        except Exception:
+            pass
+        return None
 
     def get_patient_name(self, obj):
         return obj.patient.user.get_full_name() or obj.patient.user.username

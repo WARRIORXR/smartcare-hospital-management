@@ -17,6 +17,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import opdService from '../../services/opdService';
 import hospitalService from '../../services/hospitalService';
 import BookTokenModal from '../../components/opd/BookTokenModal';
+import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 
 const MyTokens = () => {
   const navigate = useNavigate();
@@ -28,6 +29,8 @@ const MyTokens = () => {
   const [showBookModal, setShowBookModal] = useState(false);
   const [enlargedToken, setEnlargedToken] = useState(null);
   const [alert, setAlert] = useState({ type: '', message: '' });
+  const [journeyModalOpen, setJourneyModalOpen] = useState(false);
+  const [journeyPatientId, setJourneyPatientId] = useState(null);
 
   const loadData = async () => {
     try {
@@ -120,7 +123,18 @@ const MyTokens = () => {
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {tokens.length > 0 && tokens[0]?.patient && (
+              <button
+                onClick={() => {
+                  setJourneyPatientId(tokens[0].patient);
+                  setJourneyModalOpen(true);
+                }}
+                className="inline-flex items-center px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs border border-white/20 shadow-xs transition"
+              >
+                <span className="mr-1.5 text-base">📜</span> My Medical Journey
+              </button>
+            )}
             <button
               onClick={() => navigate('/patient/book-token')}
               className="inline-flex items-center px-4 py-2.5 rounded-xl bg-white text-blue-900 font-bold text-xs shadow-md hover:bg-blue-50 transition"
@@ -313,6 +327,19 @@ const MyTokens = () => {
                     </div>
                   )}
 
+                  {/* Active Inpatient Admission Banner */}
+                  {token.active_admission && (
+                    <div className="mt-4 p-3 bg-rose-50/80 border border-rose-200 rounded-2xl flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 text-rose-900 font-bold">
+                        <span className="text-base">🛏️</span>
+                        <span>Admitted: {token.active_admission.ward_name} (Bed {token.active_admission.bed_number})</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white font-black text-[10px] uppercase tracking-wider">
+                        Inpatient
+                      </span>
+                    </div>
+                  )}
+
                   {/* Symptoms description */}
                   {token.symptoms && (
                     <p className="mt-3 text-xs text-gray-500 italic bg-gray-50 p-2.5 rounded-xl border border-gray-100">
@@ -322,13 +349,27 @@ const MyTokens = () => {
                 </div>
 
                 {/* Footer Actions */}
-                <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between">
-                  <button
-                    onClick={() => setEnlargedToken(token)}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition"
-                  >
-                    View Digital Pass Slip
-                  </button>
+                <div className="mt-5 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setEnlargedToken(token)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition"
+                    >
+                      View Digital Pass Slip
+                    </button>
+                    {token.patient && (
+                      <button
+                        onClick={() => {
+                          setJourneyPatientId(token.patient);
+                          setJourneyModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition"
+                        title="View Complete Care Journey (OPD -> Bed -> Blood)"
+                      >
+                        <span>📜</span> Journey
+                      </button>
+                    )}
+                  </div>
 
                   {token.status === 'waiting' && (
                     <button
@@ -423,6 +464,13 @@ const MyTokens = () => {
           }}
         />
       )}
+
+      {/* Universal Patient Journey Modal */}
+      <PatientJourneyModal
+        isOpen={journeyModalOpen}
+        onClose={() => setJourneyModalOpen(false)}
+        patientId={journeyPatientId}
+      />
     </div>
   );
 };

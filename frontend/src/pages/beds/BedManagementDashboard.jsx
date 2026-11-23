@@ -19,7 +19,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import bedService from '../../services/bedService';
-import Navbar from '../../components/common/Navbar';
+import hospitalService from '../../services/hospitalService';
+import opdService from '../../services/opdService';
+import bloodBankService from '../../services/bloodBankService';
+import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 
 const WARD_TYPE_LABELS = {
   general: 'General Ward',
@@ -34,6 +37,8 @@ const WARD_TYPE_LABELS = {
 const BedManagementDashboard = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.is_staff;
+  const isDoctor = user?.role === 'doctor';
+  const canAdmit = isAdmin || isDoctor;
 
   // Data states
   const [loading, setLoading] = useState(true);
@@ -63,6 +68,35 @@ const BedManagementDashboard = () => {
   const [showAddWardModal, setShowAddWardModal] = useState(false);
   const [showAddBedModal, setShowAddBedModal] = useState(false);
   const [selectedBedForAction, setSelectedBedForAction] = useState(null);
+
+  // Cross-Module Modals (Admit, Blood Request, Journey)
+  const [showAdmitModal, setShowAdmitModal] = useState(false);
+  const [opdWaitingTokens, setOpdWaitingTokens] = useState([]);
+  const [registeredPatients, setRegisteredPatients] = useState([]);
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+  const [admitForm, setAdmitForm] = useState({
+    patient_source: 'opd', // 'opd' | 'registered'
+    token_id: '',
+    patient_id: '',
+    ward_type: 'general',
+    diagnosis: '',
+    attending_doctor_id: '',
+  });
+
+  const [showBloodModal, setShowBloodModal] = useState(false);
+  const [bloodForm, setBloodForm] = useState({
+    patient_id: '',
+    patient_name: '',
+    blood_group: 'O+',
+    hospital_ward: '',
+    units_required: 1,
+    priority: 'urgent',
+    purpose: 'surgery',
+    notes: '',
+  });
+
+  const [journeyModalOpen, setJourneyModalOpen] = useState(false);
+  const [journeyPatientId, setJourneyPatientId] = useState(null);
 
   // Form states: New Ward
   const [wardForm, setWardForm] = useState({
@@ -173,6 +207,94 @@ const BedManagementDashboard = () => {
       console.error('Failed to discharge patient:', err);
       alert('Failed to discharge patient: ' + (err.response?.data?.error || err.message));
     }
+  };
+
+  // ─── CROSS-MODULE 1: ADMIT PATIENT FROM OPD / REGISTERED ───
+  const openAdmitModal = async () => {
+    try {
+      const [tokenData, patData, docData] = await Promise.all([
+        opdService.getTokens({ status: 'waiting' }).catch(() => []),
+        hospitalService.getPatients().catch(() => []),
+        hospitalService.getDoctors({ available: true }).catch(() => []),
+      ]);
+      setOpdWaitingTokens(tokenData || []);
+      setRegisteredPatients(patData || []);
+      setAvailableDoctors(docData || []);
+
+      const defaultToken = tokenData?.[0];
+      const defaultPat = patData?.[0];
+
+      setAdmitForm({
+        patient_source: tokenData?.length > 0 ? 'opd' : 'registered',
+        token_id: defaultToken?.id || '',
+        patient_id: defaultToken?.patient || defaultPat?.id || '',
+        ward_type: 'general',
+        diagnosis: defaultToken?.symptoms || 'Patient Observation & Care',
+        attending_doctor_id: defaultToken?.doctor || docData?.[0]?.id || '',
+      });
+      setShowAdmitModal(true);
+    } catch (err) {
+      console.error('Failed to open admit modal', err);
+      alert('Could not retrieve OPD queue data.');
+    }
+  };
+
+  const handleAutoAdmitSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        patient_id: Number(admitForm.patient_id),
+        token_id: admitForm.patient_source === 'opd' && admitForm.token_id ? Number(admitForm.token_id) : null,
+        ward_type: admitForm.ward_type,
+        diagnosis: admitForm.diagnosis,
+        attending_doctor_id: admitForm.attending_doctor_id ? Number(admitForm.attending_doctor_id) : null,
+      };
+
+      const res = await bedService.autoAdmitPatient(payload);
+      setSuccessMsg(res.message || 'Patient successfully admitted!');
+      setShowAdmitModal(false);
+      fetchOverview(true);
+    } catch (err) {
+      console.error('Admit failed', err);
+      alert(err?.response?.data?.error || 'Failed to admit patient.');
+    }
+  };
+
+  // ─── CROSS-MODULE 2: BLOOD REQUEST FOR INPATIENT ───
+  const openBloodModalForInpatient = (patientId, patientName, bloodGroup, wardLocation) => {
+    setBloodForm({
+      patient_id: patientId || '',
+      patient_name: patientName || '',
+      blood_group: bloodGroup || 'O+',
+      hospital_ward: wardLocation || '',
+      units_required: 1,
+      priority: 'urgent',
+      purpose: 'surgery',
+      notes: `Requested for inpatient in ${wardLocation}`,
+    });
+    setShowBloodModal(true);
+  };
+
+  const handleBloodSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await bloodBankService.createRequest(bloodForm);
+      setSuccessMsg(`Blood request for ${bloodForm.units_required} unit(s) ${bloodForm.blood_group} submitted successfully!`);
+      setShowBloodModal(false);
+    } catch (err) {
+      console.error('Failed to submit blood request', err);
+      alert(err?.response?.data?.detail || 'Failed to submit blood request.');
+    }
+  };
+
+  // ─── CROSS-MODULE 3: VIEW COMPLETE PATIENT JOURNEY ───
+  const openJourneyForPatient = (patientId) => {
+    if (!patientId) {
+      alert('No Patient ID linked to this record.');
+      return;
+    }
+    setJourneyPatientId(patientId);
+    setJourneyModalOpen(true);
   };
 
   // Handle Create Ward
@@ -373,6 +495,18 @@ const BedManagementDashboard = () => {
               Refresh
             </button>
 
+            {/* Cross-Module Action: Admit Patient to Ward */}
+            {canAdmit && (
+              <button
+                onClick={openAdmitModal}
+                className="inline-flex items-center px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm transition gap-1.5"
+                title="Admit an OPD waiting patient or registered patient"
+              >
+                <span>🛏️</span>
+                <span>+ Admit Patient</span>
+              </button>
+            )}
+
             {/* Admin Action Buttons */}
             {isAdmin && (
               <>
@@ -555,12 +689,28 @@ const BedManagementDashboard = () => {
                           })}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => handleDischargePatient(adm.id, adm.bed_number, adm.patient_name)}
-                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 transition"
-                          >
-                            Discharge →
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => openBloodModalForInpatient(adm.patient_id || adm.patient, adm.patient_name, adm.patient_blood_group, `${adm.ward_name} (Bed ${adm.bed_number})`)}
+                              className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition"
+                              title="Request blood for this inpatient"
+                            >
+                              🩸 Blood
+                            </button>
+                            <button
+                              onClick={() => openJourneyForPatient(adm.patient_id || adm.patient)}
+                              className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
+                              title="View complete medical timeline"
+                            >
+                              📜 Journey
+                            </button>
+                            <button
+                              onClick={() => handleDischargePatient(adm.id, adm.bed_number, adm.patient_name)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition"
+                            >
+                              Discharge →
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1231,25 +1381,64 @@ const BedManagementDashboard = () => {
                 )}
               </div>
 
-              {/* Quick Discharge Inpatient Action if Bed Occupied */}
-              {selectedBedForAction.status === 'occupied' && selectedBedForAction.current_admission_id && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleDischargePatient(
-                        selectedBedForAction.current_admission_id,
-                        selectedBedForAction.bed_number,
-                        selectedBedForAction.current_patient_name
-                      )
-                    }
-                    className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
-                  >
-                    <span>🚪</span>
-                    <span>Discharge Patient & Free Bed</span>
-                  </button>
-                  <p className="text-2xs text-gray-500 text-center mt-1">
-                    Bed will automatically become Available (Green) again.
+              {/* Cross-Module Actions if Bed Occupied */}
+              {selectedBedForAction.status === 'occupied' && (
+                <div className="pt-2 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const b = selectedBedForAction;
+                        setSelectedBedForAction(null);
+                        openBloodModalForInpatient(
+                          b.current_patient_id,
+                          b.current_patient_name,
+                          b.current_patient_blood_group,
+                          `${b.ward_name} (Bed ${b.bed_number})`
+                        );
+                      }}
+                      className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition flex items-center justify-center gap-1"
+                    >
+                      <span>🩸</span>
+                      <span>Request Blood</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const b = selectedBedForAction;
+                        setSelectedBedForAction(null);
+                        if (b.current_patient_id) {
+                          openJourneyForPatient(b.current_patient_id);
+                        } else {
+                          alert('Patient record is not directly linked.');
+                        }
+                      }}
+                      className="py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition flex items-center justify-center gap-1"
+                    >
+                      <span>📜</span>
+                      <span>View Journey</span>
+                    </button>
+                  </div>
+
+                  {selectedBedForAction.current_admission_id && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDischargePatient(
+                          selectedBedForAction.current_admission_id,
+                          selectedBedForAction.bed_number,
+                          selectedBedForAction.current_patient_name
+                        )
+                      }
+                      className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1.5"
+                    >
+                      <span>🚪</span>
+                      <span>Discharge Patient & Free Bed</span>
+                    </button>
+                  )}
+                  <p className="text-2xs text-gray-500 text-center">
+                    Bed will automatically become Available (Green) upon discharge.
                   </p>
                 </div>
               )}
@@ -1274,6 +1463,332 @@ const BedManagementDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* Cross-Module Modal: Admit Patient to Ward */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {showAdmitModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scaleUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-purple-50 text-purple-700 rounded-xl text-lg">🛏️</span>
+                <div>
+                  <h3 className="text-base font-extrabold text-gray-900">Admit Patient to Ward</h3>
+                  <p className="text-xs text-gray-500">Auto-assigns first available bed of chosen type</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAdmitModal(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAutoAdmitSubmit} className="mt-4 space-y-4">
+              {/* Patient Source Toggle */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Select Patient Source
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = opdWaitingTokens?.[0];
+                      setAdmitForm({
+                        ...admitForm,
+                        patient_source: 'opd',
+                        token_id: t?.id || '',
+                        patient_id: t?.patient || '',
+                        diagnosis: t?.symptoms || admitForm.diagnosis,
+                      });
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
+                      admitForm.patient_source === 'opd'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    🎟️ Today's OPD Queue ({opdWaitingTokens.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = registeredPatients?.[0];
+                      setAdmitForm({
+                        ...admitForm,
+                        patient_source: 'registered',
+                        token_id: '',
+                        patient_id: p?.id || '',
+                      });
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
+                      admitForm.patient_source === 'registered'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    👤 All Registered Patients ({registeredPatients.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Patient Selection Dropdown */}
+              {admitForm.patient_source === 'opd' ? (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase">
+                    Select OPD Waiting Token *
+                  </label>
+                  {opdWaitingTokens.length === 0 ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs mt-1">
+                      No active OPD waiting tokens today. Switch to "All Registered Patients" above.
+                    </div>
+                  ) : (
+                    <select
+                      value={admitForm.token_id}
+                      onChange={(e) => {
+                        const selTok = opdWaitingTokens.find((t) => t.id === Number(e.target.value));
+                        setAdmitForm({
+                          ...admitForm,
+                          token_id: e.target.value,
+                          patient_id: selTok?.patient || '',
+                          diagnosis: selTok?.symptoms || admitForm.diagnosis,
+                        });
+                      }}
+                      required
+                      className="mt-1 w-full px-3 py-2 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    >
+                      {opdWaitingTokens.map((tok) => (
+                        <option key={tok.id} value={tok.id}>
+                          {tok.token_code} — {tok.patient_name || 'Patient'} ({tok.priority.toUpperCase()})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase">
+                    Select Patient *
+                  </label>
+                  <select
+                    value={admitForm.patient_id}
+                    onChange={(e) => setAdmitForm({ ...admitForm, patient_id: e.target.value })}
+                    required
+                    className="mt-1 w-full px-3 py-2 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                  >
+                    {registeredPatients.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.patient_id} — {p.user?.first_name} {p.user?.last_name || ''} ({p.blood_group})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Ward Type Selection */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase">
+                  Target Ward Type *
+                </label>
+                <select
+                  value={admitForm.ward_type}
+                  onChange={(e) => setAdmitForm({ ...admitForm, ward_type: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white font-semibold"
+                >
+                  <option value="general">🏥 General Ward</option>
+                  <option value="icu">🚨 Intensive Care Unit (ICU)</option>
+                  <option value="private">⭐ Private Deluxe Room</option>
+                  <option value="emergency">🚑 Emergency Casualty Ward</option>
+                </select>
+              </div>
+
+              {/* Attending Doctor */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase">
+                  Attending Physician
+                </label>
+                <select
+                  value={admitForm.attending_doctor_id}
+                  onChange={(e) => setAdmitForm({ ...admitForm, attending_doctor_id: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                >
+                  <option value="">-- Assign Later / On-Duty Staff --</option>
+                  {availableDoctors.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      Dr. {doc.name || doc.user?.username} ({doc.department_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Clinical Diagnosis / Admission Reason */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase">
+                  Admission Diagnosis / Clinical Reason
+                </label>
+                <textarea
+                  rows="2"
+                  value={admitForm.diagnosis}
+                  onChange={(e) => setAdmitForm({ ...admitForm, diagnosis: e.target.value })}
+                  placeholder="e.g. Inpatient Observation, Post-surgical Recovery, Acute Care"
+                  className="mt-1 w-full px-3 py-2 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                ></textarea>
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdmitModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition"
+                >
+                  🛏️ Auto-Assign Bed & Admit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* Cross-Module Modal: Quick Blood Request for Inpatient */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {showBloodModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-rose-50 text-rose-700 rounded-xl text-lg">🩸</span>
+                <div>
+                  <h3 className="text-base font-extrabold text-gray-900">Request Blood for Inpatient</h3>
+                  <p className="text-xs text-gray-500">Links directly to Blood Bank Module</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBloodModal(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleBloodSubmit} className="mt-4 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-gray-700 uppercase">Patient Name</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={bloodForm.patient_name}
+                  className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 uppercase">Blood Group *</label>
+                  <select
+                    value={bloodForm.blood_group}
+                    onChange={(e) => setBloodForm({ ...bloodForm, blood_group: e.target.value })}
+                    className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-300 font-bold text-red-600 bg-white"
+                  >
+                    {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((bg) => (
+                      <option key={bg} value={bg}>
+                        {bg}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 uppercase">Units Required *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={bloodForm.units_required}
+                    onChange={(e) => setBloodForm({ ...bloodForm, units_required: Number(e.target.value) })}
+                    className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-300 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 uppercase">Urgency *</label>
+                  <select
+                    value={bloodForm.priority}
+                    onChange={(e) => setBloodForm({ ...bloodForm, priority: e.target.value })}
+                    className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-300 font-bold bg-white"
+                  >
+                    <option value="normal">Normal (Within 24h)</option>
+                    <option value="urgent">Urgent (Within 4h)</option>
+                    <option value="emergency">🚨 Emergency (Immediate)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 uppercase">Ward / Bed Location</label>
+                  <input
+                    type="text"
+                    value={bloodForm.hospital_ward}
+                    onChange={(e) => setBloodForm({ ...bloodForm, hospital_ward: e.target.value })}
+                    className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-300 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 uppercase">Clinical Purpose</label>
+                <select
+                  value={bloodForm.purpose}
+                  onChange={(e) => setBloodForm({ ...bloodForm, purpose: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-300 bg-white"
+                >
+                  <option value="surgery">Surgical Procedure</option>
+                  <option value="accident">Accident / Trauma / Emergency</option>
+                  <option value="anemia">Severe Anemia</option>
+                  <option value="thalassemia">Thalassemia</option>
+                  <option value="maternity">Maternity / Delivery</option>
+                  <option value="other">Other Medical Condition</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBloodModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition"
+                >
+                  🩸 Dispatch Blood Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* Cross-Module Modal: Unified Patient Medical Journey */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <PatientJourneyModal
+        isOpen={journeyModalOpen}
+        onClose={() => setJourneyModalOpen(false)}
+        patientId={journeyPatientId}
+      />
     </div>
   );
 };

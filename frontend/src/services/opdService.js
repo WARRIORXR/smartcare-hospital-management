@@ -9,6 +9,11 @@ import api from './api';
 
 export const opdService = {
   // ─── PATIENT TOKEN APIS ───
+  getTokens: async (params = {}) => {
+    const response = await api.get('/opd/tokens/', { params });
+    return response.data;
+  },
+
   generateToken: async (payload) => {
     const response = await api.post('/opd/tokens/generate/', payload);
     return response.data;

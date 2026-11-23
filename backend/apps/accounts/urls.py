@@ -13,6 +13,7 @@ from .views import (
     DepartmentDetailView,
     DoctorListCreateView,
     DoctorDetailView,
+    PatientListView,
     PatientJourneyView,
     AdminAnalyticsDashboardView,
 )
@@ -26,7 +27,8 @@ urlpatterns = [
     # Admin Hospital Analytics Dashboard (Step 14)
     path('admin/analytics/', AdminAnalyticsDashboardView.as_view(), name='admin_analytics'),
 
-    # Patient Journey (Unified across Module 1, 2, 3)
+    # Patient Directory & Journey (Unified across Module 1, 2, 3)
+    path('patients/', PatientListView.as_view(), name='patient_list'),
     path('patients/<int:pk>/journey/', PatientJourneyView.as_view(), name='patient_journey'),
 
     # Department CRUD endpoints (Admin Add/Edit/Delete, Public List)

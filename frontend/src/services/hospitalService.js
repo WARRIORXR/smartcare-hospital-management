@@ -56,6 +56,12 @@ export const hospitalService = {
     return response.data;
   },
 
+  // ─── PATIENT DIRECTORY (Cross-Module Integration) ───
+  getPatients: async (params = {}) => {
+    const response = await api.get('/accounts/patients/', { params });
+    return response.data;
+  },
+
   // ─── UNIFIED PATIENT JOURNEY (Step 13) ───
   getPatientJourney: async (patientId) => {
     const response = await api.get(`/accounts/patients/${patientId}/journey/`);

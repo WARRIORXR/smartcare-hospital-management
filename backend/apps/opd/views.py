@@ -94,6 +94,32 @@ class TokenDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
 
+class TokenListView(generics.ListAPIView):
+    """
+    GET /api/opd/tokens/
+    Lists today's tokens with optional filters: ?status=waiting&doctor=1
+    Used for cross-module integration (e.g. Bed module selecting an OPD patient to admit).
+    """
+    serializer_class = TokenSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        today = timezone.now().date()
+        qs = Token.objects.filter(appointment_date=today).select_related(
+            'patient__user', 'doctor__user', 'doctor__department', 'department'
+        ).order_by('token_number')
+
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        doctor_id = self.request.query_params.get('doctor')
+        if doctor_id:
+            qs = qs.filter(doctor_id=doctor_id)
+
+        return qs
+
+
 class TokenCancelView(APIView):
     permission_classes = [IsAuthenticated]
 

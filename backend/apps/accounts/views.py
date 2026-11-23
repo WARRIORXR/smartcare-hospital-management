@@ -208,7 +208,33 @@ class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 # ─────────────────────────────────────────────
-# 6. Complete Unified Patient Journey API (Step 13)
+# 6. Patient Directory (Cross-Module Integration)
+# ─────────────────────────────────────────────
+class PatientListView(generics.ListAPIView):
+    """
+    GET /api/accounts/patients/
+    Lists registered patients with search filter.
+    Used by Doctors, Bed Management, and Blood Bank to quickly select patients.
+    """
+    serializer_class = PatientProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Patient.objects.select_related('user').all().order_by('-created_at')
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(user__username__icontains=search) |
+                Q(patient_id__icontains=search) |
+                Q(user__phone__icontains=search)
+            )
+        return qs
+
+
+# ─────────────────────────────────────────────
+# 7. Complete Unified Patient Journey API (Step 13)
 # ─────────────────────────────────────────────
 class PatientJourneyView(APIView):
     """

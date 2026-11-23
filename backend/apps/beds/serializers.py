@@ -17,6 +17,8 @@ class BedSerializer(serializers.ModelSerializer):
     ward_type = serializers.CharField(source='ward.ward_type', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     current_patient_name = serializers.SerializerMethodField()
+    current_patient_id = serializers.SerializerMethodField()
+    current_patient_blood_group = serializers.SerializerMethodField()
     current_admission_id = serializers.SerializerMethodField()
 
     class Meta:
@@ -33,6 +35,8 @@ class BedSerializer(serializers.ModelSerializer):
             'has_ventilator',
             'has_monitor',
             'current_patient_name',
+            'current_patient_id',
+            'current_patient_blood_group',
             'current_admission_id',
             'created_at',
             'updated_at',
@@ -45,6 +49,22 @@ class BedSerializer(serializers.ModelSerializer):
             admission = obj.admissions.filter(status='admitted').first()
             if admission and admission.patient and admission.patient.user:
                 return admission.patient.user.get_full_name() or admission.patient.user.username
+        return None
+
+    def get_current_patient_id(self, obj):
+        """If bed is occupied, return patient ID."""
+        if obj.status == 'occupied':
+            admission = obj.admissions.filter(status='admitted').first()
+            if admission and admission.patient:
+                return admission.patient.id
+        return None
+
+    def get_current_patient_blood_group(self, obj):
+        """If bed is occupied, return patient's blood group."""
+        if obj.status == 'occupied':
+            admission = obj.admissions.filter(status='admitted').first()
+            if admission and admission.patient:
+                return admission.patient.blood_group
         return None
 
     def get_current_admission_id(self, obj):
@@ -122,6 +142,7 @@ class AdmissionSerializer(serializers.ModelSerializer):
     """
     Serializer for Patient Admission into a Bed.
     """
+    patient_id = serializers.IntegerField(source='patient.id', read_only=True)
     patient_name = serializers.SerializerMethodField()
     patient_code = serializers.SerializerMethodField()
     patient_phone = serializers.SerializerMethodField()
@@ -138,6 +159,7 @@ class AdmissionSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'patient',
+            'patient_id',
             'patient_name',
             'patient_code',
             'patient_phone',

@@ -12,6 +12,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
+import bedService from '../../services/bedService';
+import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 import Navbar from '../../components/common/Navbar';
 import { Link } from 'react-router-dom';
 
@@ -38,8 +40,14 @@ const BloodRequestPage = () => {
   // Matching Donors from low-stock response
   const [matchingDonorsAlert, setMatchingDonorsAlert] = useState(null);
 
+  // Cross-module state: Inpatients & Journey
+  const [inpatients, setInpatients] = useState([]);
+  const [journeyModalOpen, setJourneyModalOpen] = useState(false);
+  const [journeyPatientId, setJourneyPatientId] = useState(null);
+
   // Form State
   const [formData, setFormData] = useState({
+    patient_id: null,
     patient_name: user?.role === 'patient' && user?.first_name ? `${user.first_name} ${user.last_name}` : '',
     hospital_ward: 'General Ward',
     blood_group: 'O+',
@@ -50,13 +58,14 @@ const BloodRequestPage = () => {
     notes: '',
   });
 
-  // Fetch Live Stock & Requests
+  // Fetch Live Stock, Requests & Active Inpatients
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [stockData, reqData] = await Promise.all([
+      const [stockData, reqData, inpatientsData] = await Promise.all([
         bloodBankService.getLiveStock(),
         bloodBankService.getRequests(),
+        bedService.getActiveAdmissions().catch(() => ({ admissions: [] })),
       ]);
 
       const stockMap = {};
@@ -65,6 +74,7 @@ const BloodRequestPage = () => {
       });
       setLiveStock(stockMap);
       setRequests(reqData || []);
+      setInpatients(inpatientsData?.admissions || (Array.isArray(inpatientsData) ? inpatientsData : []));
     } catch (err) {
       console.error('Failed to load blood requests data', err);
       setErrorMsg('Could not load blood requests or inventory.');
@@ -76,6 +86,21 @@ const BloodRequestPage = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Handler for quick-selecting an active inpatient
+  const handleSelectInpatient = (admissionId) => {
+    if (!admissionId) return;
+    const adm = inpatients.find((a) => String(a.id) === String(admissionId));
+    if (!adm) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      patient_id: adm.patient_id || adm.patient,
+      patient_name: adm.patient_name || '',
+      hospital_ward: `${adm.ward_name} (Bed ${adm.bed_number})`,
+      blood_group: adm.patient_blood_group && BLOOD_GROUPS.includes(adm.patient_blood_group) ? adm.patient_blood_group : prev.blood_group,
+    }));
+  };
 
   // Live stock for currently selected group in form
   const currentGroupUnits = liveStock[formData.blood_group] ?? 0;
@@ -95,6 +120,7 @@ const BloodRequestPage = () => {
     try {
       setSubmitting(true);
       const res = await bloodBankService.createRequest({
+        patient_id: formData.patient_id || undefined,
         patient_name: formData.patient_name,
         hospital_ward: formData.hospital_ward,
         blood_group: formData.blood_group,
@@ -120,6 +146,7 @@ const BloodRequestPage = () => {
 
       // Reset form
       setFormData({
+        patient_id: null,
         patient_name: user?.role === 'patient' && user?.first_name ? `${user.first_name} ${user.last_name}` : '',
         hospital_ward: 'General Ward',
         blood_group: 'O+',
@@ -326,6 +353,32 @@ const BloodRequestPage = () => {
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Inpatient Quick-Fill Selector */}
+              {inpatients && inpatients.length > 0 && (
+                <div className="p-3 bg-rose-50/70 rounded-2xl border border-rose-200/80">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-2xs font-extrabold text-rose-900 uppercase flex items-center gap-1.5">
+                      <span>🛏️</span> Select Admitted Inpatient
+                    </label>
+                    <span className="text-[10px] font-bold text-rose-700 bg-white px-2 py-0.5 rounded-full border border-rose-200">
+                      {inpatients.length} Inpatient{inpatients.length > 1 ? 's' : ''} Admitted
+                    </span>
+                  </div>
+                  <select
+                    onChange={(e) => handleSelectInpatient(e.target.value)}
+                    className="w-full text-xs font-semibold px-3 py-2 bg-white rounded-xl border border-rose-300 text-rose-950 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    defaultValue=""
+                  >
+                    <option value="">-- Choose Inpatient to Auto-Fill --</option>
+                    {inpatients.map((adm) => (
+                      <option key={adm.id} value={adm.id}>
+                        {adm.patient_name} ({adm.patient_code || 'ID: ' + adm.id}) - {adm.ward_name} (Bed {adm.bed_number}) - Blood: {adm.patient_blood_group || 'N/A'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Patient Name */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
@@ -539,10 +592,41 @@ const BloodRequestPage = () => {
                           </td>
 
                           <td className="px-4 py-3">
-                            <div className="font-bold text-gray-900">{req.patient_name}</div>
-                            <div className="text-2xs text-gray-500">
-                              Ward: {req.hospital_ward || 'Not specified'} • By:{' '}
-                              {req.requested_by_name}
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-900">{req.patient_name}</span>
+                              {req.patient_code && (
+                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                  {req.patient_code}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-2xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-1.5">
+                              <span>Ward: {req.hospital_ward || 'Not specified'}</span>
+                              <span>•</span>
+                              <span>By: {req.requested_by_name}</span>
+                            </div>
+                            {/* Cross-Module Quick Links */}
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              {req.patient_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setJourneyPatientId(req.patient_id);
+                                    setJourneyModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] border border-indigo-200 transition"
+                                  title="View Unified Patient Journey across OPD, Beds, and Blood Bank"
+                                >
+                                  <span>📜</span> Journey
+                                </button>
+                              )}
+                              <Link
+                                to="/beds"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[10px] border border-purple-200 transition"
+                                title="Open Bed & Ward Management"
+                              >
+                                <span>🛏️</span> Ward
+                              </Link>
                             </div>
                           </td>
 
@@ -612,6 +696,13 @@ const BloodRequestPage = () => {
           </div>
         </div>
       </main>
+
+      {/* ── Cross-Module Unified Patient Journey Modal ── */}
+      <PatientJourneyModal
+        isOpen={journeyModalOpen}
+        onClose={() => setJourneyModalOpen(false)}
+        patientId={journeyPatientId}
+      />
     </div>
   );
 };

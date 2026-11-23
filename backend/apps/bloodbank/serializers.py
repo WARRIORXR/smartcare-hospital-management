@@ -142,6 +142,8 @@ class BloodRequestSerializer(serializers.ModelSerializer):
     """
     Serializer for Blood Unit Requests (Patient/Doctor with Urgency Normal/Urgent/Emergency).
     """
+    patient_id = serializers.IntegerField(source='patient.id', read_only=True)
+    patient_code = serializers.CharField(source='patient.patient_id', read_only=True)
     patient_name = serializers.CharField(required=False, allow_blank=True)
     requested_by_name = serializers.SerializerMethodField()
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
@@ -154,6 +156,8 @@ class BloodRequestSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'patient',
+            'patient_id',
+            'patient_code',
             'patient_name',
             'hospital_ward',
             'requested_by',
