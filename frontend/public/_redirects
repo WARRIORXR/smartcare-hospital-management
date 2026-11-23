@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA redirect rule
+# Ensures client-side routing (React Router) works on all deep paths
+/*    /index.html   200

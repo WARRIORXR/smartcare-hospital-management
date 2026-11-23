@@ -1,25 +1,28 @@
 # ============================================================
-# SmartCare – Django Backend Requirements
+# SmartCare — Django Backend Requirements
 # Install with: pip install -r requirements.txt
 # ============================================================
 
 # Django core web framework
 Django==4.2.16
 
-# Django REST Framework – for building APIs
+# Django REST Framework — for building APIs
 djangorestframework==3.15.2
 
 # JWT Authentication (JSON Web Tokens)
 djangorestframework-simplejwt==5.3.1
 
-# CORS headers – allows React frontend to call Django API
+# CORS headers — allows React frontend to call Django API
 django-cors-headers==4.4.0
-
-# MySQL database connector (pre-built wheel for Python 3.15)
-mysqlclient==2.3.2
 
 # Environment variable management (.env file support)
 python-decouple==3.8
 
 # JWT dependency
 PyJWT==2.15.1
+
+# ── Production / Render.com ──
+gunicorn==22.0.0           # Production WSGI HTTP Server
+whitenoise==6.7.0          # Serve static files in production
+dj-database-url==2.2.0     # Parse DATABASE_URL env var
+psycopg2-binary==2.9.9     # PostgreSQL adapter

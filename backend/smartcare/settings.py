@@ -21,7 +21,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-produc
 # Set to False in production
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = [h.strip() for h in config('ALLOWED_HOSTS', default='localhost,127.0.0.1,.onrender.com').split(',') if h.strip()]
 
 # ------------------------------------------------------------------
 # INSTALLED APPS
@@ -38,7 +38,6 @@ INSTALLED_APPS = [
     'rest_framework',               # Django REST Framework
     'rest_framework_simplejwt',     # JWT Authentication
     'corsheaders',                  # Allow React frontend to access API
-
     # Our custom apps
     'apps.accounts',                # User auth module
     'apps.opd',                     # OPD Token Queue module
@@ -48,6 +47,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',    # Serve static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # CORS must be before CommonMiddleware
     'django.middleware.common.CommonMiddleware',
@@ -78,11 +78,20 @@ TEMPLATES = [
 WSGI_APPLICATION = 'smartcare.wsgi.application'
 
 # ------------------------------------------------------------------
-# DATABASE — SQLite (default for development/demo) or MySQL
+# DATABASE — PostgreSQL (Render production) or SQLite (dev/demo)
 # ------------------------------------------------------------------
 DB_ENGINE = config('DB_ENGINE', default='sqlite').lower()
 
-if DB_ENGINE == 'mysql':
+if DB_ENGINE == 'postgresql' or config('DATABASE_URL', default=''):
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=config('DATABASE_URL', default='sqlite:///db.sqlite3'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+elif DB_ENGINE == 'mysql':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.mysql',
@@ -135,7 +144,7 @@ REST_FRAMEWORK = {
 }
 
 # ------------------------------------------------------------------
-# CORS SETTINGS — Allow React dev server to call Django API
+# CORS SETTINGS — Allow React dev server and production frontend
 # ------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',    # Vite dev server
@@ -143,6 +152,18 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',    # React dev server
     'http://127.0.0.1:3000',
 ]
+
+# Add production frontend URL from env
+FRONTEND_URL = config('FRONTEND_URL', default='')
+if FRONTEND_URL:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+
+# Automatically allow all Cloudflare Pages domains (*.pages.dev) and Render domains
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.pages\.dev$",
+    r"^https:\/\/.*\.onrender\.com$",
+]
+
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow local dev origins when in debug mode
 CORS_ALLOW_CREDENTIALS = True
 
@@ -174,3 +195,12 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ------------------------------------------------------------------
+# PRODUCTION SECURITY (only when DEBUG=False)
+# ------------------------------------------------------------------
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
