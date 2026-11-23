@@ -152,6 +152,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:5173',
     'http://localhost:3000',    # React dev server
     'http://127.0.0.1:3000',
+    'https://smartcare-hospital.tanishjaswal56.workers.dev',
 ]
 
 # Add production frontend URL from env
@@ -159,9 +160,10 @@ FRONTEND_URL = config('FRONTEND_URL', default='')
 if FRONTEND_URL:
     CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
 
-# Automatically allow all Cloudflare Pages domains (*.pages.dev) and Render domains
+# Automatically allow Cloudflare domains (*.workers.dev, *.pages.dev) and Render domains
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https:\/\/.*\.pages\.dev$",
+    r"^https:\/\/.*\.workers\.dev$",
     r"^https:\/\/.*\.onrender\.com$",
 ]
 
