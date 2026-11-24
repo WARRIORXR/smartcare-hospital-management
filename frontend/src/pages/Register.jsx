@@ -112,34 +112,39 @@ const Register = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white text-2xl shadow-md mb-3">
+      <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center mb-6">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white text-2xl shadow-sm mb-3">
           🏥
         </div>
-        <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-          Create SmartCare Account
-        </h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Select your role and enter your details to register
+        <div className="flex items-center justify-center space-x-2">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Create SmartCare Account
+          </h1>
+          <span className="text-[11px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+            Secure Portal
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500 font-medium">
+          Choose your account type and fill in your details to get started
         </p>
       </div>
 
       {/* Registration Card */}
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl">
-        <div className="bg-white py-8 px-6 shadow-xl rounded-2xl border border-gray-100 sm:px-10">
+      <div className="sm:mx-auto sm:w-full sm:max-w-xl">
+        <div className="bg-white py-7 px-6 sm:px-8 rounded-2xl border border-slate-200/90 shadow-sm">
           {/* Role Selection Tabs */}
-          <div className="mb-6">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Select Role
+          <div className="mb-5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+              Select Account Type
             </label>
-            <div className="grid grid-cols-3 gap-2 p-1 bg-gray-100 rounded-xl">
+            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl">
               <button
                 type="button"
                 onClick={() => setRole('patient')}
-                className={`py-2 px-3 text-sm font-semibold rounded-lg transition ${
+                className={`py-2 px-3 text-xs font-semibold rounded-lg transition cursor-pointer ${
                   role === 'patient'
-                    ? 'bg-white text-emerald-700 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-emerald-700 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 👤 Patient
@@ -147,10 +152,10 @@ const Register = () => {
               <button
                 type="button"
                 onClick={() => setRole('doctor')}
-                className={`py-2 px-3 text-sm font-semibold rounded-lg transition ${
+                className={`py-2 px-3 text-xs font-semibold rounded-lg transition cursor-pointer ${
                   role === 'doctor'
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-blue-700 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 👨‍⚕️ Doctor
@@ -158,10 +163,10 @@ const Register = () => {
               <button
                 type="button"
                 onClick={() => setRole('admin')}
-                className={`py-2 px-3 text-sm font-semibold rounded-lg transition ${
+                className={`py-2 px-3 text-xs font-semibold rounded-lg transition cursor-pointer ${
                   role === 'admin'
-                    ? 'bg-white text-purple-700 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-purple-700 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 🛡️ Admin

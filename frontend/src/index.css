@@ -1,14 +1,43 @@
 /* src/index.css
    ---------------
-   Global CSS for SmartCare.
-   These 3 Tailwind directives inject all Tailwind utility classes.
+   Global Minimal Clinical Styling for SmartCare HMS.
 */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom global styles */
-body {
-  @apply bg-gray-50 font-sans;
+@layer base {
+  html {
+    @apply antialiased scroll-smooth;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  
+  body {
+    @apply bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900;
+  }
+
+  /* Refined, minimal custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full hover:bg-slate-400 transition;
+  }
+}
+
+@layer components {
+  /* Minimal card container */
+  .minimal-card {
+    @apply bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition duration-150;
+  }
+
+  /* Minimal badge */
+  .minimal-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  }
 }
