@@ -13,12 +13,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
 import Navbar from '../../components/common/Navbar';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
 const DonorRegistrationPage = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  // Defensive Guard: Only Admin, Doctor, and Blood Bank Staff can manage/view donors
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || !['admin', 'doctor', 'bloodbank_staff'].includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const [donors, setDonors] = useState([]);
   const [loading, setLoading] = useState(true);

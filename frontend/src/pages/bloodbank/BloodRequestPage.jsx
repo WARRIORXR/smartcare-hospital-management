@@ -15,12 +15,21 @@ import bloodBankService from '../../services/bloodBankService';
 import bedService from '../../services/bedService';
 import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 import Navbar from '../../components/common/Navbar';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
 const BloodRequestPage = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  // Defensive Guard: Must be authenticated
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
   const isMedicalStaff =
     user?.role === 'doctor' ||
     user?.role === 'bloodbank_staff' ||

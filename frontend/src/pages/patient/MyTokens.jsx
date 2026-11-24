@@ -12,7 +12,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { QRCodeSVG } from 'qrcode.react';
 import opdService from '../../services/opdService';
 import hospitalService from '../../services/hospitalService';
@@ -20,7 +21,16 @@ import BookTokenModal from '../../components/opd/BookTokenModal';
 import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 
 const MyTokens = () => {
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Defensive Guard: Only Patients can view personal tokens
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || user.role !== 'patient') {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const [tokens, setTokens] = useState([]);
   const [doctors, setDoctors] = useState([]);

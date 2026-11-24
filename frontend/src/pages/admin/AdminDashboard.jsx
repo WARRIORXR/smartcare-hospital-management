@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import hospitalService from '../../services/hospitalService';
 
@@ -48,8 +48,16 @@ ChartJS.register(
 );
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Defensive Guard: Only Admin can access
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || (user.role !== 'admin' && !user.is_staff)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);

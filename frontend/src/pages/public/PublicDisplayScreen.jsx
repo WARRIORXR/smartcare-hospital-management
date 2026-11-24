@@ -13,13 +13,28 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import opdService from '../../services/opdService';
 import hospitalService from '../../services/hospitalService';
 
 const PublicDisplayScreen = () => {
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { doctorId } = useParams();
   const navigate = useNavigate();
+
+  // Defensive Guard: Only authorized medical staff (Doctor / Admin) can view Clinic Screen
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user || !['admin', 'doctor'].includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const [activeDoctorId, setActiveDoctorId] = useState(doctorId || '');
   const [doctors, setDoctors] = useState([]);

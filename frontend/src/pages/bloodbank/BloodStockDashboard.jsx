@@ -13,10 +13,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
 import Navbar from '../../components/common/Navbar';
-import { Link } from 'react-router-dom';
 
 // Clinical description of each blood group
 const BLOOD_GROUP_INFO = {
@@ -31,7 +31,16 @@ const BLOOD_GROUP_INFO = {
 };
 
 const BloodStockDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  // Defensive Guard: Only Admin, Doctor, and Blood Bank Staff can access inventory dashboard
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || !['admin', 'doctor', 'bloodbank_staff'].includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const canManage =
     user?.role === 'bloodbank_staff' ||
     user?.role === 'admin' ||

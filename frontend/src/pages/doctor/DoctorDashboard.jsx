@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import opdService from '../../services/opdService';
 import bedService from '../../services/bedService';
@@ -18,7 +19,15 @@ import bloodBankService from '../../services/bloodBankService';
 import hospitalService from '../../services/hospitalService';
 
 const DoctorDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  // Defensive Guard: Only Doctors can access Doctor Queue Dashboard
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || user.role !== 'doctor') {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Queue Data
   const [queueData, setQueueData] = useState(null);

@@ -17,6 +17,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import bedService from '../../services/bedService';
 import hospitalService from '../../services/hospitalService';
@@ -35,7 +36,16 @@ const WARD_TYPE_LABELS = {
 };
 
 const BedManagementDashboard = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  // Defensive Guard: Only Admin and Doctor can manage beds
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || !['admin', 'doctor'].includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const isAdmin = user?.role === 'admin' || user?.is_staff;
   const isDoctor = user?.role === 'doctor';
   const canAdmit = isAdmin || isDoctor;
