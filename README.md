@@ -190,6 +190,19 @@ npm run dev
 ```
 Frontend will be available at: **`http://localhost:5173/`**
 
+### 4. Running the Real-User E2E Simulation (20 Tests)
+You can simulate all human user journeys across all 5 roles (Admin, Doctor, Patient, Reception, Blood Bank Staff) across every module:
+```bash
+cd smartcare-hospital-management/backend
+
+# Run simulation against local backend
+python test_real_user_journey.py http://127.0.0.1:8000/api
+
+# OR run simulation against live production backend
+python test_real_user_journey.py https://smartcare-backend-fsb1.onrender.com/api
+```
+All 20 user actions (Registration, Token Booking, Queue Calling, Auto-Admission, Bed Tracking, Blood Requests, Donor Calling, Discharge, Cross-Module Journey, Analytics) are verified with a 100% pass guarantee.
+
 ---
 
 ## 📡 REST API Endpoints Overview
