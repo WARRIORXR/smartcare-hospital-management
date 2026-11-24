@@ -55,6 +55,21 @@ class CanManageBloodBank(permissions.BasePermission):
         )
 
 
+class CanViewDonors(permissions.BasePermission):
+    """
+    Protects donor privacy: Only hospital staff, doctors, and blood bank admins
+    can view or register donors. Regular patients are blocked from donor PII.
+    """
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        return (
+            request.user.role in ['bloodbank_staff', 'admin', 'doctor'] or
+            request.user.is_staff or
+            request.user.is_superuser
+        )
+
+
 class BloodStockLiveView(APIView):
     """
     GET /api/bloodbank/stock/
@@ -206,7 +221,7 @@ class DonorListCreateView(generics.ListCreateAPIView):
     POST: Register a new blood donor (Name, Blood Group, Phone, City, Last Donation Date)
     """
     serializer_class = DonorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanViewDonors]
 
     def get_queryset(self):
         queryset = Donor.objects.all().order_by('-created_at')
@@ -233,7 +248,7 @@ class MatchingDonorsView(APIView):
     GET /api/bloodbank/donors/matching/?blood_group=O-&city=Mumbai
     Returns matching donors compatible with requested blood group.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanViewDonors]
 
     def get(self, request):
         blood_group = request.query_params.get('blood_group', '').strip().upper()

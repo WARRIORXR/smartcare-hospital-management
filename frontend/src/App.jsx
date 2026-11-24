@@ -89,12 +89,20 @@ function App() {
             <Route path="/admin/bloodbank" element={<BloodStockDashboard />} />
           </Route>
 
-          {/* Shared Hospital Modules (Beds & Blood Bank) for Authenticated Users */}
-          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'patient', 'bloodbank_staff']} />}>
+          {/* Shared Inpatient Bed Management (Admin & Doctor Only) */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor']} />}>
             <Route path="/beds" element={<BedManagementDashboard />} />
+          </Route>
+
+          {/* Blood Bank Donor Registry (Admin, Doctor, Blood Bank Staff Only) */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'bloodbank_staff']} />}>
+            <Route path="/bloodbank/donors" element={<DonorRegistrationPage />} />
+          </Route>
+
+          {/* Blood Stock & Blood Requests (All Authenticated Users) */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'patient', 'bloodbank_staff']} />}>
             <Route path="/bloodbank" element={<BloodStockDashboard />} />
             <Route path="/bloodbank/stock" element={<BloodStockDashboard />} />
-            <Route path="/bloodbank/donors" element={<DonorRegistrationPage />} />
             <Route path="/bloodbank/requests" element={<BloodRequestPage />} />
           </Route>
 

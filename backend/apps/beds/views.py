@@ -361,9 +361,16 @@ class ActiveAdmissionsListView(generics.ListAPIView):
     permission_classes = [CanManageBeds]
 
     def get_queryset(self):
+        user = self.request.user
         queryset = Admission.objects.filter(status='admitted').select_related(
             'patient__user', 'bed__ward', 'attending_doctor__user', 'token'
         ).order_by('-admission_date')
+
+        # Anti-IDOR: Patients can ONLY see their own admission record
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            if hasattr(user, 'patient_profile'):
+                return queryset.filter(patient=user.patient_profile)
+            return queryset.none()
 
         # Filter by doctor (my_patients)
         my_patients = self.request.query_params.get('my_patients')
@@ -399,7 +406,14 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
     permission_classes = [CanManageBeds]
 
     def get_queryset(self):
-        return Admission.objects.select_related('patient__user', 'bed__ward', 'attending_doctor__user').all()
+        user = self.request.user
+        qs = Admission.objects.select_related('patient__user', 'bed__ward', 'attending_doctor__user').all()
+        # Anti-IDOR: Patients can ONLY see their own admissions
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            if hasattr(user, 'patient_profile'):
+                return qs.filter(patient=user.patient_profile)
+            return qs.none()
+        return qs
 
     def perform_create(self, serializer):
         bed = serializer.validated_data.get('bed')

@@ -114,6 +114,10 @@ def run_tests():
         active_pat_user = pat_auth.get("user", {})
         active_pat_id = active_pat_user.get("id")
 
+    status, prof_resp = make_req("/accounts/profile/", "GET", token=active_pat_token)
+    patient_profile_id = prof_resp.get("profile", {}).get("id") if (status == 200 and prof_resp.get("profile")) else 1
+    print(f"     Patient Profile ID: {patient_profile_id}")
+
     # -------------------------------------------------------------
     # 3. PATIENT JOURNEY: BOOKING AN OPD TOKEN WITH DR. SHARMA
     # -------------------------------------------------------------
@@ -175,13 +179,12 @@ def run_tests():
             gen_ward = wards[0]
 
     admission_id = None
-    # Lookup patient profile id
-    patient_profile_id = None
-    status, pat_profiles = make_req(f"/accounts/patients/?search={sim_username}", "GET", token=doc_token)
-    if isinstance(pat_profiles, list) and len(pat_profiles) > 0:
-        patient_profile_id = pat_profiles[0].get("id")
-    else:
-        patient_profile_id = 1
+    if not patient_profile_id:
+        status, pat_profiles = make_req(f"/accounts/patients/?search={sim_username}", "GET", token=doc_token)
+        if isinstance(pat_profiles, list) and len(pat_profiles) > 0:
+            patient_profile_id = pat_profiles[0].get("id")
+        else:
+            patient_profile_id = 1
 
     if gen_ward and target_doc:
         status, admit_resp = make_req("/beds/admissions/auto-admit/", "POST", {
@@ -209,6 +212,14 @@ def run_tests():
     print("\n--- 6. Blood Bank: Stock & Request ---")
     status, blood_stock = make_req("/bloodbank/stock/", "GET", token=admin_token)
     check("Fetch Blood Stock Ledger (8 Groups)", status == 200 and "stock" in blood_stock, f"status={status}")
+
+    # Replenish stock for test
+    make_req("/bloodbank/stock/update/", "POST", {
+        "blood_group": "B+",
+        "units": 10,
+        "action": "add",
+        "expiry_date": "2026-12-31"
+    }, token=admin_token)
 
     # Submit Inpatient Blood Request
     status, blood_req = make_req("/bloodbank/requests/", "POST", {
@@ -277,6 +288,27 @@ def run_tests():
         print(f"     Average Wait: {kpis.get('average_waiting_time_display')}")
         print(f"     Bed Occupancy: {kpis.get('bed_occupancy_percentage')}%")
         print(f"     Blood Low Stock Alerts: {kpis.get('blood_stock_low_alerts', {}).get('count')} groups below threshold")
+
+    # -------------------------------------------------------------
+    # 10. SECURITY & ANTI-IDOR CROSS-USER ISOLATION
+    # -------------------------------------------------------------
+    print("\n--- 10. Security & Anti-IDOR Cross-User Isolation ---")
+    # Patient Arjun attempts to access Patient Rahul's medical journey (ID 1)
+    status, idor_leak = make_req("/accounts/patients/1/journey/", "GET", token=active_pat_token)
+    check("Anti-IDOR: Patient Blocked From Other Patient Medical Journey (403)", status == 403, f"status={status}, resp={idor_leak}")
+
+    # Patient Arjun attempts to fetch all hospital patients directory
+    status, pat_dir = make_req("/accounts/patients/", "GET", token=active_pat_token)
+    is_safe_dir = status == 200 and isinstance(pat_dir, list) and (len(pat_dir) <= 1)
+    check("Anti-IDOR: Patient Restricted to Only Their Own Patient Profile", is_safe_dir, f"status={status}, count={len(pat_dir) if isinstance(pat_dir, list) else 0}")
+
+    # Patient Arjun attempts to scrape donor personal contact phone numbers
+    status, donor_leak = make_req("/bloodbank/donors/", "GET", token=active_pat_token)
+    check("Anti-IDOR: Patient Blocked From Accessing Donor Directory (403)", status == 403, f"status={status}, resp={donor_leak}")
+
+    # Patient Arjun can view their own medical journey safely
+    status, own_journey = make_req(f"/accounts/patients/{patient_profile_id}/journey/", "GET", token=active_pat_token)
+    check("Authorized Access: Patient Accesses Own Medical Journey (200)", status == 200, f"status={status}")
 
     print("\n============================================================")
     print("📋 SUMMARY OF TEST RESULTS")

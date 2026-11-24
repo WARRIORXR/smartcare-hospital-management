@@ -89,9 +89,17 @@ class MyTokensView(APIView):
 
 
 class TokenDetailView(generics.RetrieveAPIView):
-    queryset = Token.objects.select_related('doctor', 'doctor__user', 'department').all()
     serializer_class = TokenSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Token.objects.select_related('doctor', 'doctor__user', 'department')
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            if hasattr(user, 'patient_profile'):
+                return qs.filter(patient=user.patient_profile)
+            return qs.none()
+        return qs.all()
 
 
 class TokenListView(generics.ListAPIView):
@@ -104,10 +112,17 @@ class TokenListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
         today = timezone.now().date()
         qs = Token.objects.filter(appointment_date=today).select_related(
             'patient__user', 'doctor__user', 'doctor__department', 'department'
         ).order_by('token_number')
+
+        # Anti-IDOR: Patients can only list their own tokens
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            if hasattr(user, 'patient_profile'):
+                return qs.filter(patient=user.patient_profile)
+            return qs.none()
 
         status_param = self.request.query_params.get('status')
         if status_param:

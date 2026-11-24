@@ -215,11 +215,19 @@ class PatientListView(generics.ListAPIView):
     GET /api/accounts/patients/
     Lists registered patients with search filter.
     Used by Doctors, Bed Management, and Blood Bank to quickly select patients.
+    Strictly isolated: Patients can only view their own profile.
     """
     serializer_class = PatientProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
+        # Strict privacy barrier: Patients can only view their own profile, never others
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            if hasattr(user, 'patient_profile'):
+                return Patient.objects.filter(id=user.patient_profile.id)
+            return Patient.objects.none()
+
         qs = Patient.objects.select_related('user').all().order_by('-created_at')
         search = self.request.query_params.get('search')
         if search:
@@ -244,14 +252,35 @@ class PatientJourneyView(APIView):
       - Module 2: Inpatient Bed Allocation & Admissions
       - Module 3: Blood Bank Requests & Matching Donors
     Linked through the Patient ID.
+    Strictly protected: Patients can ONLY view their own journey.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        patient = Patient.objects.filter(Q(pk=pk) | Q(user_id=pk)).first()
-        if not patient:
-            from rest_framework.exceptions import NotFound
-            raise NotFound("Patient profile not found.")
+        from rest_framework.exceptions import NotFound
+
+        # Anti-IDOR Security Barrier:
+        # Patients are strictly forbidden from viewing another patient's medical records
+        if request.user.role == 'patient' and not (request.user.is_staff or request.user.is_superuser):
+            if not hasattr(request.user, 'patient_profile'):
+                return Response(
+                    {"detail": "Logged in user does not have an active patient profile."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            user_profile = request.user.patient_profile
+            # Check if requested pk matches their own profile id or user id or 'me'
+            if str(pk).lower() != 'me' and str(pk) != str(user_profile.id) and str(pk) != str(request.user.id):
+                return Response(
+                    {"detail": "Access denied. You are not authorized to view another patient's medical journey."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            patient = user_profile
+        else:
+            patient = Patient.objects.filter(pk=pk).first()
+            if not patient:
+                patient = Patient.objects.filter(user_id=pk).first()
+            if not patient:
+                raise NotFound("Patient profile not found.")
 
         # 1. Module 1: OPD Tokens
         from apps.opd.models import Token
