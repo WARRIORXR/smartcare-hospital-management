@@ -89,7 +89,7 @@ def seed():
     doctors_info = [
         {
             "username": "dr.sharma",
-            "password": "password123",
+            "password": "doctor123",
             "first_name": "Rajesh",
             "last_name": "Sharma",
             "email": "dr.sharma@smartcare.hospital",
@@ -101,7 +101,7 @@ def seed():
         },
         {
             "username": "dr.patel",
-            "password": "password123",
+            "password": "doctor123",
             "first_name": "Priya",
             "last_name": "Patel",
             "email": "dr.patel@smartcare.hospital",
@@ -113,7 +113,7 @@ def seed():
         },
         {
             "username": "dr.verma",
-            "password": "password123",
+            "password": "doctor123",
             "first_name": "Vikram",
             "last_name": "Verma",
             "email": "dr.verma@smartcare.hospital",
@@ -125,7 +125,7 @@ def seed():
         },
         {
             "username": "dr.gupta",
-            "password": "password123",
+            "password": "doctor123",
             "first_name": "Sneha",
             "last_name": "Gupta",
             "email": "dr.gupta@smartcare.hospital",
@@ -137,7 +137,7 @@ def seed():
         },
         {
             "username": "dr.iyer",
-            "password": "password123",
+            "password": "doctor123",
             "first_name": "Anand",
             "last_name": "Iyer",
             "email": "dr.iyer@smartcare.hospital",
@@ -182,7 +182,8 @@ def seed():
     # ─────────────────────────────────────────────
     patients_info = [
         {
-            "username": "patient1",
+            "username": "rahul.kumar",
+            "password": "patient123",
             "first_name": "Rahul",
             "last_name": "Kumar",
             "email": "rahul.kumar@gmail.com",
@@ -192,7 +193,19 @@ def seed():
             "blood_group": "B+",
         },
         {
+            "username": "patient1",
+            "password": "patient123",
+            "first_name": "Rahul",
+            "last_name": "Kumar",
+            "email": "patient1@smartcare.hospital",
+            "phone": "+91-9822233301",
+            "patient_id": "PAT-0005",
+            "gender": "M",
+            "blood_group": "B+",
+        },
+        {
             "username": "patient2",
+            "password": "patient123",
             "first_name": "Anjali",
             "last_name": "Singh",
             "email": "anjali.singh@gmail.com",
@@ -203,6 +216,7 @@ def seed():
         },
         {
             "username": "patient3",
+            "password": "patient123",
             "first_name": "Amit",
             "last_name": "Joshi",
             "email": "amit.joshi@gmail.com",
@@ -213,6 +227,7 @@ def seed():
         },
         {
             "username": "patient4",
+            "password": "patient123",
             "first_name": "Pooja",
             "last_name": "Desai",
             "email": "pooja.desai@gmail.com",
@@ -235,20 +250,23 @@ def seed():
                 'phone': p_data["phone"],
             }
         )
-        user.set_password('password123')
+        user.set_password(p_data.get('password', 'patient123'))
         user.save()
 
-        pat_profile, _ = Patient.objects.get_or_create(
-            user=user,
-            defaults={
-                'patient_id': p_data["patient_id"],
-                'gender': p_data["gender"],
-                'blood_group': p_data["blood_group"],
-                'address': 'SmartCity Healthcare Colony, Sector 4',
-                'emergency_contact_name': 'Family Member',
-                'emergency_contact_phone': '+91-9999888877',
-            }
-        )
+        pat_profile = Patient.objects.filter(user=user).first()
+        if not pat_profile:
+            pid = p_data["patient_id"]
+            if Patient.objects.filter(patient_id=pid).exists():
+                pid = f"PAT-{user.id:04d}"
+            pat_profile = Patient.objects.create(
+                user=user,
+                patient_id=pid,
+                gender=p_data["gender"],
+                blood_group=p_data["blood_group"],
+                address='SmartCity Healthcare Colony, Sector 4',
+                emergency_contact_name='Family Member',
+                emergency_contact_phone='+91-9999888877',
+            )
         patient_objs.append(pat_profile)
     print(f"[OK] Seeded {len(patient_objs)} Registered Patients.")
 
@@ -528,11 +546,12 @@ def seed():
     print("  Role            Username      Password")
     print("------------------------------------------------------------")
     print("  Administrator   admin         admin123")
-    print("  Doctor          dr.sharma     password123  (Cardiology)")
-    print("  Doctor          dr.patel      password123  (General Medicine)")
-    print("  Doctor          dr.verma      password123  (Orthopedics)")
-    print("  Patient         patient1      password123  (PAT-0001 / B+)")
-    print("  Patient         patient2      password123  (PAT-0002 / O+)")
+    print("  Doctor          dr.sharma     doctor123   (Cardiology)")
+    print("  Doctor          dr.patel      doctor123   (General Medicine)")
+    print("  Doctor          dr.verma      doctor123   (Orthopedics)")
+    print("  Patient         rahul.kumar   patient123  (PAT-0001 / B+)")
+    print("  Patient         patient1      patient123  (PAT-0005 / B+)")
+    print("  Patient         patient2      patient123  (PAT-0002 / O+)")
     print("------------------------------------------------------------\n")
 
 

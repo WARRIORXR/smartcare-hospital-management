@@ -165,21 +165,39 @@ const Login = () => {
             </Link>
           </div>
 
-          {/* Quick Demo Credentials Guide for Viva */}
+          {/* Quick Demo 1-Click Credentials for Evaluators & Users */}
           <div className="mt-6 pt-5 border-t border-gray-100">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              System Roles Available:
+              ⚡ Quick 1-Click Demo Login:
             </p>
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <span className="bg-emerald-50 text-emerald-700 py-1 px-1.5 rounded border border-emerald-100 font-medium">
+              <button
+                type="button"
+                onClick={() => setFormData({ username: 'rahul.kumar', password: 'patient123' })}
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-1.5 px-2 rounded-lg border border-emerald-200 font-medium transition cursor-pointer"
+                title="Auto-fill Patient Credentials"
+              >
                 👤 Patient
-              </span>
-              <span className="bg-blue-50 text-blue-700 py-1 px-1.5 rounded border border-blue-100 font-medium">
+                <span className="block text-[10px] text-emerald-600 font-normal">rahul.kumar</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ username: 'dr.sharma', password: 'doctor123' })}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 py-1.5 px-2 rounded-lg border border-blue-200 font-medium transition cursor-pointer"
+                title="Auto-fill Doctor Credentials"
+              >
                 👨‍⚕️ Doctor
-              </span>
-              <span className="bg-purple-50 text-purple-700 py-1 px-1.5 rounded border border-purple-100 font-medium">
+                <span className="block text-[10px] text-blue-600 font-normal">dr.sharma</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ username: 'admin', password: 'admin123' })}
+                className="bg-purple-50 hover:bg-purple-100 text-purple-700 py-1.5 px-2 rounded-lg border border-purple-200 font-medium transition cursor-pointer"
+                title="Auto-fill Admin Credentials"
+              >
                 🛡️ Admin
-              </span>
+                <span className="block text-[10px] text-purple-600 font-normal">admin</span>
+              </button>
             </div>
           </div>
         </div>
