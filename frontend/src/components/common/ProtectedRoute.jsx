@@ -11,7 +11,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from './Navbar';
 
-const ProtectedRoute = ({ allowedRoles = [] }) => {
+const ProtectedRoute = ({ allowedRoles = [], hideNavbar = false }) => {
   const { user, isAuthenticated, loading, getDashboardPath } = useAuth();
 
   // If still checking localStorage auth token, show a light loading spinner
@@ -37,7 +37,7 @@ const ProtectedRoute = ({ allowedRoles = [] }) => {
   // Authenticated & authorized
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navbar />
+      {!hideNavbar && <Navbar />}
       <main className="flex-1">
         <Outlet />
       </main>

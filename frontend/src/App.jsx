@@ -57,18 +57,14 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-          {/* Public Authentication Routes */}
+          {/* Public Authentication Routes (Guests only; logged-in users redirect to dashboard) */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-
-          {/* Public TV Queue Display Screen (No Login Required) */}
-          <Route path="/display/:doctorId" element={<PublicDisplayScreen />} />
-          <Route path="/display" element={<PublicDisplayScreen />} />
 
           {/* Role Dispatcher Route */}
           <Route path="/dashboard" element={<RoleDispatcher />} />
 
-          {/* Protected Patient Routes */}
+          {/* Module 1: Patient OPD & Personal Care Portal */}
           <Route element={<ProtectedRoute allowedRoles={['patient']} />}>
             <Route path="/patient/dashboard" element={<PatientDashboard />} />
             <Route path="/patient/book-token" element={<BookTokenPage />} />
@@ -76,12 +72,18 @@ function App() {
             <Route path="/patient/tokens" element={<MyTokens />} />
           </Route>
 
-          {/* Protected Doctor Routes */}
+          {/* Module 1: Doctor Consultation & Live Clinic Queue */}
           <Route element={<ProtectedRoute allowedRoles={['doctor']} />}>
             <Route path="/doctor/dashboard" element={<DoctorDashboard />} />
           </Route>
 
-          {/* Protected Admin Routes */}
+          {/* Module 1: Clinic Queue TV Display (Authorized Doctors and Admins Only) */}
+          <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor']} hideNavbar={true} />}>
+            <Route path="/display/:doctorId" element={<PublicDisplayScreen />} />
+            <Route path="/display" element={<PublicDisplayScreen />} />
+          </Route>
+
+          {/* Executive Hospital Administration */}
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/manage" element={<AdminDoctorManagement />} />
@@ -89,20 +91,20 @@ function App() {
             <Route path="/admin/bloodbank" element={<BloodStockDashboard />} />
           </Route>
 
-          {/* Shared Inpatient Bed Management (Admin & Doctor Only) */}
+          {/* Module 2: Inpatient Bed & Ward Management (Admin & Doctor Only) */}
           <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor']} />}>
             <Route path="/beds" element={<BedManagementDashboard />} />
           </Route>
 
-          {/* Blood Bank Donor Registry (Admin, Doctor, Blood Bank Staff Only) */}
+          {/* Module 3: Blood Bank Inventory Management & Donors (Admin, Doctor, Staff Only) */}
           <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'bloodbank_staff']} />}>
+            <Route path="/bloodbank" element={<BloodStockDashboard />} />
+            <Route path="/bloodbank/stock" element={<BloodStockDashboard />} />
             <Route path="/bloodbank/donors" element={<DonorRegistrationPage />} />
           </Route>
 
-          {/* Blood Stock & Blood Requests (All Authenticated Users) */}
+          {/* Module 3: Emergency Blood Requisitions (All Authenticated Users) */}
           <Route element={<ProtectedRoute allowedRoles={['admin', 'doctor', 'patient', 'bloodbank_staff']} />}>
-            <Route path="/bloodbank" element={<BloodStockDashboard />} />
-            <Route path="/bloodbank/stock" element={<BloodStockDashboard />} />
             <Route path="/bloodbank/requests" element={<BloodRequestPage />} />
           </Route>
 

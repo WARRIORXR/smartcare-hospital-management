@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       case 'reception':
         return '/reception/dashboard';
       case 'bloodbank_staff':
-        return '/bloodbank/dashboard';
+        return '/bloodbank/stock';
       default:
         return '/dashboard';
     }

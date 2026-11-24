@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const DEMO_ROLES = [
@@ -50,8 +50,13 @@ const DEMO_ROLES = [
 ];
 
 const Login = () => {
-  const { login, getDashboardPath } = useAuth();
+  const { user, isAuthenticated, login, getDashboardPath } = useAuth();
   const navigate = useNavigate();
+
+  // If already logged in, redirect to active role dashboard
+  if (isAuthenticated && user) {
+    return <Navigate to={getDashboardPath(user.role)} replace />;
+  }
 
   const [formData, setFormData] = useState({
     username: 'rahul.kumar',

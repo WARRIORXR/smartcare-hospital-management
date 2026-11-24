@@ -6,12 +6,17 @@
  */
 
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
-  const { register, getDashboardPath } = useAuth();
+  const { user, isAuthenticated, register, getDashboardPath } = useAuth();
   const navigate = useNavigate();
+
+  // If already logged in, redirect to active role dashboard
+  if (isAuthenticated && user) {
+    return <Navigate to={getDashboardPath(user.role)} replace />;
+  }
 
   // Role state
   const [role, setRole] = useState('patient');

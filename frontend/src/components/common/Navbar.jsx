@@ -76,8 +76,7 @@ const Navbar = () => {
           { name: 'Book OPD Token', path: '/patient/book-token', icon: '🎟️' },
           { name: 'My Passes', path: '/patient/tokens', icon: '📱' },
           { name: 'Doctors', path: '/patient/doctors', icon: '👨‍⚕️' },
-          { name: 'Blood Stock', path: '/bloodbank/stock', icon: '🩸' },
-          { name: 'Blood Requests', path: '/bloodbank/requests', icon: '📋' },
+          { name: 'Blood Requests', path: '/bloodbank/requests', icon: '🩸' },
         ];
       case 'bloodbank_staff':
         return [

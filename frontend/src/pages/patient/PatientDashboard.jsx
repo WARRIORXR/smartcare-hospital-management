@@ -181,23 +181,23 @@ const PatientDashboard = () => {
             <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 text-2xl flex items-center justify-center mb-4">
               🛏️
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Bed Availability</h3>
+            <h3 className="text-lg font-bold text-gray-900">Inpatient Care</h3>
             <p className="text-sm text-gray-600 mt-2">
-              Check real-time bed capacity across ICU, General, and Private wards for emergency or doctor-ordered admission.
+              Check your personal inpatient admission record, assigned ward, bed allocation, and attending doctor.
             </p>
           </div>
           <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
             <button
-              onClick={() => navigate('/beds')}
+              onClick={openJourneyModal}
               className="w-full py-2 px-4 rounded-lg bg-purple-600 text-white font-medium text-sm hover:bg-purple-700 transition"
             >
-              🛏️ View Live Bed Grid
+              📋 My Inpatient Admission Status
             </button>
             <button
               onClick={openJourneyModal}
               className="w-full py-1.5 px-2 rounded-lg bg-purple-50 text-purple-700 font-medium text-xs hover:bg-purple-100 transition text-center"
             >
-              📋 My Inpatient Admission Status
+              📜 View Full Care Timeline
             </button>
           </div>
         </div>
@@ -208,9 +208,9 @@ const PatientDashboard = () => {
             <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 text-2xl flex items-center justify-center mb-4">
               🩸
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Blood Bank Request</h3>
+            <h3 className="text-lg font-bold text-gray-900">Blood Requisition</h3>
             <p className="text-sm text-gray-600 mt-2">
-              Submit emergency or standard blood requests directly to the hospital blood bank and track status.
+              Submit emergency or planned blood requests directly to the hospital blood bank and track real-time fulfillment.
             </p>
           </div>
           <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
@@ -218,22 +218,14 @@ const PatientDashboard = () => {
               onClick={() => navigate('/bloodbank/requests')}
               className="w-full py-2 px-4 rounded-lg bg-rose-600 text-white font-medium text-sm hover:bg-rose-700 transition"
             >
-              🩸 Blood Requests & Status
+              🩸 Emergency Blood Request
             </button>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => navigate('/bloodbank/donors')}
-                className="w-full py-1.5 px-2 rounded-lg bg-rose-50 text-rose-700 font-medium text-xs hover:bg-rose-100 transition text-center"
-              >
-                🤝 Register Donor
-              </button>
-              <button
-                onClick={() => navigate('/bloodbank/stock')}
-                className="w-full py-1.5 px-2 rounded-lg bg-gray-100 text-gray-700 font-medium text-xs hover:bg-gray-200 transition text-center"
-              >
-                📊 Stock Grid
-              </button>
-            </div>
+            <button
+              onClick={() => navigate('/bloodbank/requests')}
+              className="w-full py-1.5 px-2 rounded-lg bg-rose-50 text-rose-700 font-medium text-xs hover:bg-rose-100 transition text-center"
+            >
+              📋 My Blood Request History
+            </button>
           </div>
         </div>
       </div>
