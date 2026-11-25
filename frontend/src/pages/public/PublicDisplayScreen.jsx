@@ -23,19 +23,6 @@ const PublicDisplayScreen = () => {
   const { doctorId } = useParams();
   const navigate = useNavigate();
 
-  // Defensive Guard: Only authorized medical staff (Doctor / Admin) can view Clinic Screen
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated || !user || !['admin', 'doctor'].includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   const [activeDoctorId, setActiveDoctorId] = useState(doctorId || '');
   const [doctors, setDoctors] = useState([]);
   const [displayData, setDisplayData] = useState(null);
@@ -43,6 +30,8 @@ const PublicDisplayScreen = () => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
   const [soundEnabled, setSoundEnabled] = useState(false);
   const lastAnnouncedTokenRef = useRef(null);
+
+  const isDisplayAuthorized = Boolean(isAuthenticated && user && ['admin', 'doctor', 'reception'].includes(user.role));
 
   // Live Digital Clock (every 1 second)
   useEffect(() => {
@@ -54,6 +43,7 @@ const PublicDisplayScreen = () => {
 
   // Fetch available doctors if no doctorId or for selector
   useEffect(() => {
+    if (!isDisplayAuthorized) return;
     const fetchDoctors = async () => {
       try {
         const docList = await hospitalService.getDoctors();
@@ -66,12 +56,12 @@ const PublicDisplayScreen = () => {
       }
     };
     fetchDoctors();
-  }, [doctorId]);
+  }, [isDisplayAuthorized, doctorId]);
 
   // Fetch Display Data (Every 5 seconds)
   const fetchDisplay = async () => {
     const targetId = doctorId || activeDoctorId;
-    if (!targetId) return;
+    if (!targetId || !isDisplayAuthorized) return;
 
     try {
       const data = await opdService.getPublicDisplayData(targetId);
@@ -98,11 +88,25 @@ const PublicDisplayScreen = () => {
   };
 
   useEffect(() => {
+    if (!isDisplayAuthorized) return;
     fetchDisplay();
-    // 5-second interval auto-refresh as requested
+    // 5-second interval auto-refresh for live display
     const interval = setInterval(fetchDisplay, 5000);
     return () => clearInterval(interval);
-  }, [doctorId, activeDoctorId, soundEnabled]);
+  }, [isDisplayAuthorized, doctorId, activeDoctorId, soundEnabled]);
+
+  // Defensive Guard: Only authorized clinical/front-desk staff (Doctor / Admin / Reception) can view Clinic Screen
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (!isDisplayAuthorized) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Fullscreen toggle helper
   const toggleFullscreen = () => {
@@ -250,11 +254,11 @@ const PublicDisplayScreen = () => {
                   {nowServing.token_code}
                 </div>
 
-                <div className="mt-8 text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-                  {nowServing.patient_name}
+                <div className="mt-8 text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  {nowServing.doctor_name || doctor?.name || 'OPD Consultation'}
                 </div>
                 <div className="text-sm sm:text-base text-slate-400 font-mono mt-1">
-                  Patient ID: {nowServing.patient_code || 'PAT-0001'}
+                  {nowServing.time_slot ? `Scheduled Slot: ${nowServing.time_slot}` : `Priority Queue • Privacy Mode`}
                 </div>
               </div>
             ) : (
@@ -336,7 +340,7 @@ const PublicDisplayScreen = () => {
                           {token.token_code}
                         </div>
                         <div className="text-xs text-slate-400 font-medium">
-                          {token.patient_name}
+                          {token.time_slot ? `Slot ${token.time_slot}` : token.doctor_name || `OPD #${token.token_number}`}
                         </div>
                       </div>
                     </div>

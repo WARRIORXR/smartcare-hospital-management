@@ -1,14 +1,12 @@
 /**
  * src/services/opdService.js
  * ---------------------------
- * Network calls for OPD Token Generation, Patient Queue Tracking,
- * and Doctor Consultation Controls.
+ * Network calls for OPD Tokens, Advance Slots, Proximity Notifications, and Doctor Queue.
  */
 
 import api from './api';
 
 export const opdService = {
-  // ─── PATIENT TOKEN APIS ───
   getTokens: async (params = {}) => {
     const response = await api.get('/opd/tokens/', { params });
     return response.data;
@@ -16,6 +14,11 @@ export const opdService = {
 
   generateToken: async (payload) => {
     const response = await api.post('/opd/tokens/generate/', payload);
+    return response.data;
+  },
+
+  getDoctorSlots: async (doctorId, date) => {
+    const response = await api.get(`/opd/doctors/${doctorId}/slots/`, { params: { date } });
     return response.data;
   },
 
@@ -36,7 +39,23 @@ export const opdService = {
     return response.data;
   },
 
-  // ─── DOCTOR QUEUE APIS ───
+  // Notifications (SMS / WhatsApp / In-App Queue Alerts)
+  getNotifications: async (params = {}) => {
+    const response = await api.get('/opd/notifications/', { params });
+    return response.data;
+  },
+
+  markNotificationRead: async (id) => {
+    const response = await api.post(`/opd/notifications/${id}/read/`);
+    return response.data;
+  },
+
+  markAllNotificationsRead: async () => {
+    const response = await api.post('/opd/notifications/read-all/');
+    return response.data;
+  },
+
+  // Doctor Queue Controls
   getDoctorQueue: async () => {
     const response = await api.get('/opd/doctor/queue/');
     return response.data;
@@ -60,7 +79,7 @@ export const opdService = {
     return response.data;
   },
 
-  // ─── PUBLIC TV DISPLAY APIS (NO AUTH REQUIRED) ───
+  // Clinical Display Screen
   getPublicDisplayData: async (doctorId) => {
     const response = await api.get(`/opd/public/display/${doctorId}/`);
     return response.data;

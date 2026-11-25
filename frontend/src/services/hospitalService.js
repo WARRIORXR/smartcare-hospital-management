@@ -1,17 +1,15 @@
 /**
  * src/services/hospitalService.js
  * --------------------------------
- * API service for Departments and Doctors management.
+ * API service for Departments, Doctors, Leave/Availability, Feedback, Audit Logs, and Reports.
  */
 
-import api from './api';
+import api, { downloadAuthenticatedFile } from './api';
 
 export const hospitalService = {
-  // ─── DEPARTMENT APIS ───
+  // Departments
   getDepartments: async (showAll = false) => {
-    const response = await api.get('/accounts/departments/', {
-      params: { all: showAll },
-    });
+    const response = await api.get('/accounts/departments/', { params: { all: showAll } });
     return response.data;
   },
 
@@ -30,7 +28,7 @@ export const hospitalService = {
     return response.data;
   },
 
-  // ─── DOCTOR APIS ───
+  // Doctors
   getDoctors: async (params = {}) => {
     const response = await api.get('/accounts/doctors/', { params });
     return response.data;
@@ -56,21 +54,75 @@ export const hospitalService = {
     return response.data;
   },
 
-  // ─── PATIENT DIRECTORY (Cross-Module Integration) ───
+  toggleDoctorAvailability: async (payload = {}) => {
+    const response = await api.patch('/accounts/doctors/toggle-availability/', payload);
+    return response.data;
+  },
+
+  // Doctor Leave Schedule
+  getLeaves: async (params = {}) => {
+    const response = await api.get('/accounts/leaves/', { params });
+    return response.data;
+  },
+
+  createLeave: async (leaveData) => {
+    const response = await api.post('/accounts/leaves/', leaveData);
+    return response.data;
+  },
+
+  deleteLeave: async (id) => {
+    const response = await api.delete(`/accounts/leaves/${id}/`);
+    return response.data;
+  },
+
+  // Doctor Feedback / Patient Ratings
+  getFeedback: async (params = {}) => {
+    const response = await api.get('/accounts/feedback/', { params });
+    return response.data;
+  },
+
+  submitFeedback: async (feedbackData) => {
+    const response = await api.post('/accounts/feedback/', feedbackData);
+    return response.data;
+  },
+
+  // Patients & Journey
   getPatients: async (params = {}) => {
     const response = await api.get('/accounts/patients/', { params });
     return response.data;
   },
 
-  // ─── UNIFIED PATIENT JOURNEY (Step 13) ───
   getPatientJourney: async (patientId) => {
     const response = await api.get(`/accounts/patients/${patientId}/journey/`);
     return response.data;
   },
 
-  // ─── ADMIN ANALYTICS DASHBOARD (Step 14) ───
+  // Admin Analytics, Exports & Audit Logs
   getAdminAnalytics: async () => {
     const response = await api.get('/accounts/admin/analytics/');
+    return response.data;
+  },
+
+  downloadAnalyticsCsv: async () => {
+    await downloadAuthenticatedFile('/accounts/admin/analytics/export/csv/', 'smartcare_analytics.csv');
+  },
+
+  downloadAnalyticsPdf: async () => {
+    await downloadAuthenticatedFile('/accounts/admin/analytics/export/pdf/', 'smartcare_analytics.pdf');
+  },
+
+  getAuditLogs: async (params = {}) => {
+    const response = await api.get('/accounts/audit-logs/', { params });
+    return response.data;
+  },
+
+  getStaffList: async (params = {}) => {
+    const response = await api.get('/accounts/staff/', { params });
+    return response.data;
+  },
+
+  createStaffAccount: async (payload) => {
+    const response = await api.post('/accounts/staff/', payload);
     return response.data;
   },
 };

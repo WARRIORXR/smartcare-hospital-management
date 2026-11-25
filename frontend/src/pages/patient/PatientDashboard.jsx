@@ -2,18 +2,62 @@
  * src/pages/patient/PatientDashboard.jsx
  * --------------------------------------
  * Dashboard specifically designed for Patients.
- * Displays patient details, patient ID, and quick actions for the 3 project modules.
+ * Displays patient details, patient ID, live 5s proximity alerts (SMS / WhatsApp / In-App),
+ * integrated journey modal (Modules 1-5), and quick actions across all hospital modules.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import authService from '../../services/authService';
-import hospitalService from '../../services/hospitalService';
+import opdService from '../../services/opdService';
+import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 
 const PatientDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
+
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Live Proximity Notifications State (5s polling)
+  const [notifications, setNotifications] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  // Unified Journey Modal State
+  const [journeyModalOpen, setJourneyModalOpen] = useState(false);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const data = await opdService.getNotifications();
+      const list = Array.isArray(data) ? data : data?.results || [];
+      setNotifications(list);
+    } catch (err) {
+      console.error('Could not fetch notifications', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || user.role !== 'patient') return;
+
+    const fetchInitial = async () => {
+      try {
+        const data = await authService.getProfile();
+        setProfile(data.profile);
+      } catch (err) {
+        console.error('Could not fetch patient profile', err);
+      } finally {
+        setLoading(false);
+      }
+      await loadNotifications();
+    };
+
+    fetchInitial();
+    const intervalId = setInterval(loadNotifications, 5000);
+    return () => clearInterval(intervalId);
+  }, [isAuthenticated, user, loadNotifications]);
 
   // Defensive Guard: Only Patients can access Patient Portal
   if (authLoading) {
@@ -23,48 +67,35 @@ const PatientDashboard = () => {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Unified Journey State
-  const [journeyModalOpen, setJourneyModalOpen] = useState(false);
-  const [journeyData, setJourneyData] = useState(null);
-  const [journeyLoading, setJourneyLoading] = useState(false);
-  const [journeyError, setJourneyError] = useState(null);
-
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const data = await authService.getProfile();
-        setProfile(data.profile);
-      } catch (err) {
-        console.error('Could not fetch patient profile', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProfile();
-  }, []);
-
-  const openJourneyModal = async () => {
-    const targetPatientId = profile?.id || user?.patient_id_pk || user?.id;
-    if (!targetPatientId) {
-      setJourneyError('Patient ID could not be determined.');
-      setJourneyModalOpen(true);
-      return;
-    }
-    setJourneyModalOpen(true);
-    setJourneyLoading(true);
-    setJourneyError(null);
+  const handleMarkNotificationRead = async (id) => {
     try {
-      const data = await hospitalService.getPatientJourney(targetPatientId);
-      setJourneyData(data);
+      setNotifLoading(true);
+      await opdService.markNotificationRead(id);
+      await loadNotifications();
     } catch (err) {
-      console.error('Failed to load patient journey', err);
-      setJourneyError(err?.response?.data?.detail || 'Failed to load medical journey.');
+      console.error('Failed to mark notification read', err);
     } finally {
-      setJourneyLoading(false);
+      setNotifLoading(false);
     }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      setNotifLoading(true);
+      await opdService.markAllNotificationsRead();
+      await loadNotifications();
+    } catch (err) {
+      console.error('Failed to mark all notifications read', err);
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const resolvedPatientId = profile?.id || user?.patient_id_pk || user?.id;
+
+  const openJourneyModal = () => {
+    setJourneyModalOpen(true);
   };
 
   return (
@@ -73,20 +104,26 @@ const PatientDashboard = () => {
       <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-6 sm:p-8 text-white shadow-lg mb-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/40 border border-emerald-300/30 mb-2">
-              👤 Patient Portal
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/40 border border-emerald-300/30">
+                👤 {t('patientPortal')}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 border border-white/20 text-emerald-50">
+                <span className="w-2 h-2 rounded-full bg-lime-300 animate-pulse"></span>
+                {t('liveQueueActive')}
+              </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Welcome, {user?.first_name || user?.username}!
+              {t('welcome')}, {user?.first_name || user?.username}!
             </h1>
             <p className="mt-1 text-emerald-100 text-sm">
-              Manage your OPD tokens, bed reservations, and blood bank requests from your portal.
+              Manage your OPD tokens, bed status, clinical records, invoices, and proximity alerts in one place.
             </p>
           </div>
           <div className="bg-white/10 backdrop-blur-sm px-5 py-3 rounded-xl border border-white/20 text-center">
             <span className="block text-xs uppercase tracking-wider text-emerald-200">Patient ID</span>
             <span className="text-lg font-bold font-mono text-white">
-              {profile?.patient_id || user?.patient_id || 'PAT-0001'}
+              {loading ? '...' : profile?.patient_id || user?.patient_id || 'PAT-0001'}
             </span>
           </div>
         </div>
@@ -124,6 +161,77 @@ const PatientDashboard = () => {
         </div>
       </div>
 
+      {/* Live Queue Proximity Notifications (SMS / WhatsApp / In-App) */}
+      <div className={`rounded-2xl p-5 mb-8 border shadow-sm transition ${unreadCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">🔔</span>
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-gray-900 flex items-center gap-2">
+                {t('notificationsTitle')}
+                {unreadCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-600 text-white">
+                    {unreadCount} New
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs text-gray-500">Auto-refreshes every 5 seconds when queue positions update.</p>
+            </div>
+          </div>
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={handleMarkAllRead}
+              disabled={notifLoading}
+              className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold transition"
+            >
+              Mark All Read
+            </button>
+          )}
+        </div>
+
+        {notifications.length === 0 ? (
+          <p className="text-xs text-gray-500 italic">{t('noNotifications')}</p>
+        ) : (
+          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+            {notifications.slice(0, 6).map((n) => (
+              <div
+                key={n.id}
+                className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                  n.is_read ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white border-amber-300 text-gray-900 shadow-xs'
+                }`}
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-100 text-indigo-700">
+                      {n.channel || 'in_app'}
+                    </span>
+                    {n.token_code && (
+                      <span className="font-mono font-bold text-blue-700">{n.token_code}</span>
+                    )}
+                    <span className="font-bold">{n.title}</span>
+                    <span className="text-[11px] text-gray-400">
+                      {new Date(n.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="text-xs">{n.message}</p>
+                </div>
+                {!n.is_read && (
+                  <button
+                    type="button"
+                    onClick={() => handleMarkNotificationRead(n.id)}
+                    disabled={notifLoading}
+                    className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold text-[11px] transition"
+                  >
+                    Mark Read
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Unified Patient Journey Banner (Step 13) */}
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 rounded-2xl p-6 text-white shadow-md mb-8 flex flex-col md:flex-row items-center justify-between gap-6 border border-indigo-700/50">
         <div>
@@ -134,7 +242,7 @@ const PatientDashboard = () => {
           </div>
           <h2 className="text-xl sm:text-2xl font-bold">Your Integrated Medical Timeline</h2>
           <p className="text-sm text-indigo-200 mt-1 max-w-2xl">
-            All 3 modules (OPD Consultation &rarr; Bed Allocation &rarr; Blood Bank Requests) are connected under your unique Patient ID. Track your complete journey in real time.
+            All 5 modules (OPD Consultation &rarr; Bed Allocation &rarr; Blood Bank &rarr; Medical Records &rarr; Billing) are connected under your unique Patient ID.
           </p>
         </div>
         <button
@@ -148,7 +256,7 @@ const PatientDashboard = () => {
 
       {/* Main Module Action Cards */}
       <h2 className="text-lg font-bold text-gray-900 mb-4">SmartCare Services</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Module 1: OPD Token Queue */}
         <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
           <div>
@@ -237,191 +345,56 @@ const PatientDashboard = () => {
             </button>
           </div>
         </div>
-      </div>
 
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* Patient Journey Timeline Modal */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {journeyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-6 sm:p-8 my-8 relative">
+        {/* Module 4: Clinical Medical Records & Lab Reports */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 text-2xl flex items-center justify-center mb-4">
+              🩺
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">{t('medicalRecordsTitle')}</h3>
+            <p className="text-sm text-gray-600 mt-2">
+              View doctor prescriptions, consultation diagnoses, visit notes, and download verified lab report files.
+            </p>
+          </div>
+          <div className="mt-6 pt-4 border-t border-gray-100">
             <button
-              onClick={() => { setJourneyModalOpen(false); setJourneyData(null); }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              onClick={() => navigate('/records')}
+              className="w-full py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition"
             >
-              ✕
+              📂 Open My Medical Records
             </button>
-
-            <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-              <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-700 text-2xl flex items-center justify-center">
-                📜
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Patient Medical Journey</h3>
-                <p className="text-xs text-gray-500">
-                  Unified record linking Module 1 (OPD) &rarr; Module 2 (Beds) &rarr; Module 3 (Blood Bank)
-                </p>
-              </div>
-            </div>
-
-            {journeyLoading && (
-              <div className="py-12 text-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-3"></div>
-                <p className="text-sm text-gray-500">Loading your medical journey across all hospital modules...</p>
-              </div>
-            )}
-
-            {journeyError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm mb-4">
-                {journeyError}
-              </div>
-            )}
-
-            {journeyData && !journeyLoading && (
-              <div className="space-y-6">
-                {/* Header summary badge */}
-                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-wrap justify-between items-center gap-3">
-                  <div>
-                    <span className="text-xs font-mono font-bold text-indigo-600 bg-white px-2 py-1 rounded border border-indigo-200">
-                      {journeyData.patient?.patient_code}
-                    </span>
-                    <span className="ml-3 font-bold text-gray-900">{journeyData.patient?.name}</span>
-                    <span className="ml-2 text-xs text-gray-500">({journeyData.patient?.gender}, Blood: <strong className="text-red-600">{journeyData.patient?.blood_group}</strong>)</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="text-xs bg-white text-gray-700 px-2.5 py-1 rounded-full font-medium border border-gray-200">
-                      OPD Tokens: {journeyData.journey_summary?.total_opd_visits}
-                    </span>
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${journeyData.journey_summary?.is_currently_admitted ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
-                      {journeyData.journey_summary?.is_currently_admitted ? `Admitted (${journeyData.journey_summary?.current_ward} - ${journeyData.journey_summary?.current_bed})` : 'Not Inpatient'}
-                    </span>
-                    <span className="text-xs bg-white text-gray-700 px-2.5 py-1 rounded-full font-medium border border-gray-200">
-                      Blood Req: {journeyData.journey_summary?.total_blood_requests}
-                    </span>
-                  </div>
-                </div>
-
-                {/* 3 Step Timeline */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Step 1: OPD */}
-                  <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/30">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">1</span>
-                      <h4 className="font-bold text-blue-900 text-sm">Module 1: OPD Consultation</h4>
-                    </div>
-                    {journeyData.module_1_opd?.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">No OPD consultation tokens found.</p>
-                    ) : (
-                      <div className="space-y-2 max-h-56 overflow-y-auto">
-                        {journeyData.module_1_opd.map(tok => (
-                          <div key={tok.id} className="bg-white border border-blue-100 rounded-lg p-2.5 text-xs shadow-xs">
-                            <div className="flex justify-between items-center font-mono font-bold text-blue-700">
-                              <span>{tok.token_code}</span>
-                              <span className="text-gray-500 font-sans text-[11px] capitalize">{tok.status}</span>
-                            </div>
-                            <p className="font-medium text-gray-800 mt-1">{tok.doctor_name}</p>
-                            <p className="text-[11px] text-gray-500">{tok.department_name} • Room {tok.room_number}</p>
-                            {tok.symptoms && (
-                              <p className="text-[11px] text-gray-600 mt-1 bg-gray-50 p-1 rounded italic">
-                                "{tok.symptoms}"
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Step 2: Bed Allocation */}
-                  <div className="border border-purple-200 rounded-xl p-4 bg-purple-50/30">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="w-6 h-6 rounded-full bg-purple-600 text-white text-xs flex items-center justify-center font-bold">2</span>
-                      <h4 className="font-bold text-purple-900 text-sm">Module 2: Bed Allocation</h4>
-                    </div>
-                    {journeyData.module_2_beds?.active_admission ? (
-                      <div className="bg-white border border-purple-200 rounded-lg p-3 text-xs shadow-xs mb-2">
-                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 uppercase mb-1">
-                          Currently Admitted
-                        </span>
-                        <p className="font-bold text-gray-900 text-sm">
-                          Bed {journeyData.module_2_beds.active_admission.bed_number}
-                        </p>
-                        <p className="text-purple-700 font-medium">
-                          {journeyData.module_2_beds.active_admission.ward_name} ({journeyData.module_2_beds.active_admission.ward_type})
-                        </p>
-                        <p className="text-gray-600 mt-1">
-                          Floor: {journeyData.module_2_beds.active_admission.floor_number}
-                        </p>
-                        <p className="text-gray-600 mt-1">
-                          Attending: {journeyData.module_2_beds.active_admission.attending_doctor_name}
-                        </p>
-                        <p className="text-gray-600 mt-1 italic bg-purple-50 p-1 rounded">
-                          Diagnosis: {journeyData.module_2_beds.active_admission.diagnosis}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-white border border-gray-100 rounded-lg p-3 text-xs text-gray-500 mb-2">
-                        Not currently admitted in any ward.
-                      </div>
-                    )}
-
-                    {journeyData.module_2_beds?.admissions_history?.filter(a => a.status === 'discharged').length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-[11px] font-bold text-gray-500 uppercase mb-1">Past Discharges</p>
-                        <div className="space-y-1 max-h-28 overflow-y-auto">
-                          {journeyData.module_2_beds.admissions_history.filter(a => a.status === 'discharged').map(d => (
-                            <div key={d.id} className="bg-white border border-gray-200 rounded p-1.5 text-[11px]">
-                              <span className="font-semibold">{d.bed_number}</span> ({d.ward_name}) - Discharged
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Step 3: Blood Bank */}
-                  <div className="border border-rose-200 rounded-xl p-4 bg-rose-50/30">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="w-6 h-6 rounded-full bg-rose-600 text-white text-xs flex items-center justify-center font-bold">3</span>
-                      <h4 className="font-bold text-rose-900 text-sm">Module 3: Blood Bank</h4>
-                    </div>
-                    {journeyData.module_3_bloodbank?.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">No blood bank requests filed for this patient.</p>
-                    ) : (
-                      <div className="space-y-2 max-h-56 overflow-y-auto">
-                        {journeyData.module_3_bloodbank.map(br => (
-                          <div key={br.id} className="bg-white border border-rose-100 rounded-lg p-2.5 text-xs shadow-xs">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold text-rose-700">{br.units_required} Unit(s) {br.blood_group}</span>
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${br.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : br.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {br.status}
-                              </span>
-                            </div>
-                            <p className="text-gray-600 mt-1">Priority: <strong className="capitalize">{br.priority}</strong></p>
-                            {br.hospital_ward && (
-                              <p className="text-gray-500 text-[11px]">Ward: {br.hospital_ward}</p>
-                            )}
-                            <p className="text-gray-500 text-[11px]">Purpose: {br.purpose}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
-              <button
-                onClick={() => { setJourneyModalOpen(false); setJourneyData(null); }}
-                className="px-5 py-2 rounded-xl bg-gray-100 text-gray-700 font-semibold text-sm hover:bg-gray-200 transition"
-              >
-                Close Timeline
-              </button>
-            </div>
           </div>
         </div>
-      )}
+
+        {/* Module 5: Billing & PDF Receipts */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 text-2xl flex items-center justify-center mb-4">
+              🧾
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">{t('billingTitle')}</h3>
+            <p className="text-sm text-gray-600 mt-2">
+              Review itemized OPD & inpatient ward invoices, complete pending payments, and download PDF receipts.
+            </p>
+          </div>
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            <button
+              onClick={() => navigate('/billing')}
+              className="w-full py-2 px-4 rounded-lg bg-amber-600 text-white font-medium text-sm hover:bg-amber-700 transition"
+            >
+              💳 View Invoices & PDF Receipts
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Unified Patient Journey Timeline Modal (Modules 1-5) */}
+      <PatientJourneyModal
+        isOpen={journeyModalOpen}
+        onClose={() => setJourneyModalOpen(false)}
+        patientId={resolvedPatientId}
+      />
     </div>
   );
 };

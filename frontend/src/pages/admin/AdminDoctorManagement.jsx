@@ -1,8 +1,8 @@
 /**
  * src/pages/admin/AdminDoctorManagement.jsx
  * -----------------------------------------
- * Admin portal for managing Departments and Doctors.
- * Supports Add, Edit, Delete, and Status toggle.
+ * Admin portal for managing Departments, Doctors, and Hospital Staff Roles
+ * (Receptionists, Blood Bank Staff, Doctors, Admins) with strong password validation.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -13,19 +13,12 @@ import hospitalService from '../../services/hospitalService';
 const AdminDoctorManagement = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
-  // Defensive Guard: Only Admin can access
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || (user.role !== 'admin' && !user.is_staff)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  const [activeTab, setActiveTab] = useState('doctors'); // 'doctors' | 'departments'
+  const [activeTab, setActiveTab] = useState('doctors'); // 'doctors' | 'departments' | 'staff'
 
   // Data states
   const [doctors, setDoctors] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState({ type: '', message: '' });
 
@@ -33,6 +26,18 @@ const AdminDoctorManagement = () => {
   const [showDeptModal, setShowDeptModal] = useState(false);
   const [editingDept, setEditingDept] = useState(null);
   const [deptForm, setDeptForm] = useState({ name: '', description: '', is_active: true });
+
+  const [showStaffModal, setShowStaffModal] = useState(false);
+  const [staffSaving, setStaffSaving] = useState(false);
+  const [staffForm, setStaffForm] = useState({
+    username: '',
+    password: '',
+    email: '',
+    first_name: '',
+    last_name: '',
+    phone: '',
+    role: 'reception',
+  });
 
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState(null);
@@ -54,27 +59,40 @@ const AdminDoctorManagement = () => {
     is_available: true,
   });
 
+  const isAuthorizedAdmin = Boolean(isAuthenticated && user && (user.role === 'admin' || user.is_staff));
+
   // Load initial data
   const loadData = async () => {
     try {
       setLoading(true);
-      const [deptData, docData] = await Promise.all([
+      const [deptData, docData, staffData] = await Promise.all([
         hospitalService.getDepartments(true),
         hospitalService.getDoctors(),
+        hospitalService.getStaffList().catch(() => []),
       ]);
       setDepartments(deptData);
       setDoctors(docData);
+      setStaffList(Array.isArray(staffData) ? staffData : staffData?.results || []);
     } catch (err) {
       console.error('Failed to load data', err);
-      showAlert('error', 'Failed to fetch departments or doctors.');
+      showAlert('error', 'Failed to fetch departments, doctors, or staff.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (!isAuthorizedAdmin) return;
     loadData();
-  }, []);
+  }, [isAuthorizedAdmin]);
+
+  // Defensive Guard: Only Admin can access
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthorizedAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
@@ -172,6 +190,42 @@ const AdminDoctorManagement = () => {
     setShowDoctorModal(true);
   };
 
+  const openAddStaff = () => {
+    setStaffForm({
+      username: '',
+      password: '',
+      email: '',
+      first_name: '',
+      last_name: '',
+      phone: '',
+      role: 'reception',
+    });
+    setShowStaffModal(true);
+  };
+
+  const handleCreateStaff = async (e) => {
+    e.preventDefault();
+    try {
+      setStaffSaving(true);
+      await hospitalService.createStaffAccount(staffForm);
+      showAlert('success', `Staff account @${staffForm.username} (${staffForm.role}) provisioned cleanly.`);
+      setShowStaffModal(false);
+      await loadData();
+    } catch (err) {
+      const data = err?.response?.data;
+      const msg =
+        data?.password?.[0] ||
+        data?.non_field_errors?.[0] ||
+        data?.email?.[0] ||
+        data?.username?.[0] ||
+        data?.detail ||
+        'Could not create staff account. Ensure password is strong (8+ chars, upper/lower/number).';
+      showAlert('error', msg);
+    } finally {
+      setStaffSaving(false);
+    }
+  };
+
   const handleSaveDoctor = async (e) => {
     e.preventDefault();
     try {
@@ -186,7 +240,13 @@ const AdminDoctorManagement = () => {
       loadData();
     } catch (err) {
       console.error(err);
-      showAlert('error', 'Failed to save doctor. Make sure username is unique.');
+      const data = err?.response?.data;
+      const msg =
+        data?.password?.[0] ||
+        data?.non_field_errors?.[0] ||
+        data?.detail ||
+        'Failed to save doctor. Verify unique username and strong password.';
+      showAlert('error', msg);
     }
   };
 
@@ -224,12 +284,19 @@ const AdminDoctorManagement = () => {
             >
               <span className="mr-2 text-base font-bold">+</span> Add New Doctor
             </button>
-          ) : (
+          ) : activeTab === 'departments' ? (
             <button
               onClick={openAddDept}
               className="inline-flex items-center px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-medium text-sm shadow-md transition"
             >
               <span className="mr-2 text-base font-bold">+</span> Add Department
+            </button>
+          ) : (
+            <button
+              onClick={openAddStaff}
+              className="inline-flex items-center px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm shadow-md transition"
+            >
+              <span className="mr-2 text-base font-bold">+</span> Provision Staff Role
             </button>
           )}
         </div>
@@ -252,7 +319,7 @@ const AdminDoctorManagement = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex space-x-2 border-b border-gray-200 mb-6">
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 mb-6">
         <button
           onClick={() => setActiveTab('doctors')}
           className={`pb-3 px-4 text-sm font-bold border-b-2 transition ${
@@ -272,6 +339,16 @@ const AdminDoctorManagement = () => {
           }`}
         >
           🏢 Departments ({departments.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('staff')}
+          className={`pb-3 px-4 text-sm font-bold border-b-2 transition ${
+            activeTab === 'staff'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          🛡️ Staff Provisioning ({staffList.filter((u) => u.role !== 'patient').length})
         </button>
       </div>
 
@@ -360,7 +437,7 @@ const AdminDoctorManagement = () => {
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === 'departments' ? (
         /* ─── DEPARTMENTS LIST ─── */
         <div>
           {departments.length === 0 ? (
@@ -417,6 +494,42 @@ const AdminDoctorManagement = () => {
               ))}
             </div>
           )}
+        </div>
+      ) : (
+        /* ─── STAFF PROVISIONING TABLE (RECEPTION, BLOOD BANK, ADMIN, DOCTOR) ─── */
+        <div className="overflow-x-auto bg-white rounded-2xl shadow-sm border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+            <thead className="bg-gray-50 text-gray-600 uppercase text-xs font-semibold">
+              <tr>
+                <th className="px-6 py-3.5">Username</th>
+                <th className="px-6 py-3.5">Full Name</th>
+                <th className="px-6 py-3.5">Role</th>
+                <th className="px-6 py-3.5">Email / Phone</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {staffList
+                .filter((u) => u.role !== 'patient')
+                .map((member) => (
+                  <tr key={member.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-3.5 font-mono font-bold text-gray-900">@{member.username}</td>
+                    <td className="px-6 py-3.5 text-gray-800">
+                      {member.first_name || member.last_name
+                        ? `${member.first_name} ${member.last_name}`.trim()
+                        : member.username}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {member.role?.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3.5 text-xs text-gray-500">
+                      {member.email || 'No email'} {member.phone ? `• ${member.phone}` : ''}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -519,7 +632,8 @@ const AdminDoctorManagement = () => {
                       <input
                         type="password"
                         required
-                        placeholder="Min 6 chars"
+                        minLength={8}
+                        placeholder="8+ chars (Upper, Lower, Digit)"
                         value={doctorForm.password}
                         onChange={(e) => setDoctorForm({ ...doctorForm, password: e.target.value })}
                         className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
@@ -698,6 +812,113 @@ const AdminDoctorManagement = () => {
                   className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition"
                 >
                   {editingDoctor ? 'Update Doctor' : 'Save Doctor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: PROVISION STAFF ACCOUNT (RECEPTION / BLOOD BANK / ADMIN) ─── */}
+      {showStaffModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100">
+            <h3 className="text-xl font-bold text-gray-900 mb-1">Provision Staff Account</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Self-registration is restricted to patients. Staff logins are created strictly by Admins with strong passwords.
+            </p>
+            <form onSubmit={handleCreateStaff} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Hospital Role *</label>
+                <select
+                  value={staffForm.role}
+                  onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+                >
+                  <option value="reception">Front Desk / Receptionist</option>
+                  <option value="bloodbank_staff">Blood Bank Staff</option>
+                  <option value="admin">Hospital Administrator</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={staffForm.first_name}
+                    onChange={(e) => setStaffForm({ ...staffForm, first_name: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={staffForm.last_name}
+                    onChange={(e) => setStaffForm({ ...staffForm, last_name: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Username *</label>
+                <input
+                  type="text"
+                  required
+                  value={staffForm.username}
+                  onChange={(e) => setStaffForm({ ...staffForm, username: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={staffForm.email}
+                    onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={staffForm.phone}
+                    onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Strong Password *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Min 8 chars, upper, lower, digit"
+                  value={staffForm.password}
+                  onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div className="pt-3 flex justify-end gap-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowStaffModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={staffSaving}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md transition disabled:opacity-50"
+                >
+                  {staffSaving ? 'Creating...' : 'Create Staff Account'}
                 </button>
               </div>
             </form>

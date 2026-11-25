@@ -2,21 +2,25 @@
  * src/components/common/PatientJourneyModal.jsx
  * ---------------------------------------------
  * Universal Modal component that visualizes the complete patient journey
- * connecting all 3 hospital modules:
+ * connecting all 5 hospital modules:
  *   Module 1: OPD Consultation Tokens & Doctors
  *   Module 2: Inpatient Bed Allocation & Admissions
  *   Module 3: Blood Bank Requests & Donor Matching
+ *   Module 4: Clinical Medical Records, Prescriptions & Lab Reports
+ *   Module 5: Hospital Invoices & PDF Receipts
  *
  * Linked universally by Patient ID.
  */
 
 import React, { useEffect, useState } from 'react';
 import hospitalService from '../../services/hospitalService';
+import clinicalService from '../../services/clinicalService';
 
 const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null }) => {
   const [journeyData, setJourneyData] = useState(initialData);
   const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState(null);
+  const [downloadingKey, setDownloadingKey] = useState(null);
 
   useEffect(() => {
     if (!isOpen || !patientId) return;
@@ -46,9 +50,31 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
 
   if (!isOpen) return null;
 
+  const handleDownloadLabReport = async (record) => {
+    try {
+      setDownloadingKey(`rec-${record.id}`);
+      await clinicalService.downloadLabReport(record.id, `record_${record.id}_attachment.pdf`);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Could not download attachment.');
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
+
+  const handleDownloadInvoice = async (inv) => {
+    try {
+      setDownloadingKey(`inv-${inv.id}`);
+      await clinicalService.downloadInvoicePdf(inv.id, inv.invoice_number);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Could not download PDF receipt.');
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-6 sm:p-8 my-8 relative">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full p-6 sm:p-8 my-8 relative">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-bold transition"
@@ -63,7 +89,7 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
           <div>
             <h3 className="text-xl font-bold text-gray-900">Unified Patient Medical Journey</h3>
             <p className="text-xs text-gray-500">
-              Cross-Module Medical Timeline: Module 1 (OPD) &rarr; Module 2 (Beds) &rarr; Module 3 (Blood Bank)
+              Cross-Module Timeline: OPD &rarr; Beds &rarr; Blood Bank &rarr; Clinical Records &rarr; Billing
             </p>
           </div>
         </div>
@@ -71,7 +97,7 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
         {loading && (
           <div className="py-16 text-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500">Retrieving linked medical records across all 3 modules...</p>
+            <p className="text-sm text-gray-500">Retrieving linked medical records across all hospital modules...</p>
           </div>
         )}
 
@@ -115,6 +141,12 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
                 </span>
                 <span className="text-xs bg-white text-gray-700 px-3 py-1 rounded-full font-bold border border-gray-200 shadow-xs">
                   Blood Requests: {journeyData.journey_summary?.total_blood_requests}
+                </span>
+                <span className="text-xs bg-white text-emerald-700 px-3 py-1 rounded-full font-bold border border-emerald-200 shadow-xs">
+                  Records: {journeyData.journey_summary?.total_medical_records ?? (journeyData.module_4_records?.length || 0)}
+                </span>
+                <span className="text-xs bg-white text-amber-700 px-3 py-1 rounded-full font-bold border border-amber-200 shadow-xs">
+                  Invoices: {journeyData.journey_summary?.total_invoices ?? (journeyData.module_5_billing?.length || 0)}
                 </span>
               </div>
             </div>
@@ -231,6 +263,104 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
                           <p className="text-gray-600 mt-1">Priority: <strong className="capitalize">{br.priority}</strong></p>
                           {br.hospital_ward && <p className="text-gray-500 text-[11px]">Ward: {br.hospital_ward}</p>}
                           <p className="text-gray-500 text-[11px]">Purpose: {br.purpose}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modules 4 & 5: Clinical Records & Billing */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Step 4: Clinical Records & Prescriptions */}
+              <div className="border border-emerald-200 rounded-2xl p-4 bg-emerald-50/20 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-emerald-100">
+                    <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center font-bold">4</span>
+                    <h4 className="font-bold text-emerald-900 text-sm">Module 4: Medical Records & Prescriptions</h4>
+                  </div>
+                  {!journeyData.module_4_records || journeyData.module_4_records.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-4">No clinical notes, prescriptions, or lab reports attached.</p>
+                  ) : (
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                      {journeyData.module_4_records.map((rec) => (
+                        <div key={rec.id} className="bg-white border border-emerald-100 rounded-xl p-3 text-xs shadow-xs">
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 mr-1.5">
+                                {rec.record_type}
+                              </span>
+                              <span className="font-bold text-gray-900">{rec.title}</span>
+                            </div>
+                            {rec.has_attachment && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadLabReport(rec)}
+                                disabled={downloadingKey === `rec-${rec.id}`}
+                                className="shrink-0 px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] border border-emerald-200 transition"
+                              >
+                                {downloadingKey === `rec-${rec.id}` ? '...' : '📎 Report'}
+                              </button>
+                            )}
+                          </div>
+                          {rec.diagnosis && (
+                            <p className="text-gray-700 mt-1">
+                              <span className="font-semibold">Dx:</span> {rec.diagnosis}
+                            </p>
+                          )}
+                          <p className="text-gray-500 text-[11px] mt-1">
+                            By {rec.doctor_name} • {new Date(rec.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 5: Billing & Receipts */}
+              <div className="border border-amber-200 rounded-2xl p-4 bg-amber-50/20 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-amber-100">
+                    <span className="w-6 h-6 rounded-full bg-amber-600 text-white text-xs flex items-center justify-center font-bold">5</span>
+                    <h4 className="font-bold text-amber-900 text-sm">Module 5: Billing & PDF Receipts</h4>
+                  </div>
+                  {!journeyData.module_5_billing || journeyData.module_5_billing.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-4">No invoices generated for this patient.</p>
+                  ) : (
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                      {journeyData.module_5_billing.map((inv) => (
+                        <div key={inv.id} className="bg-white border border-amber-100 rounded-xl p-3 text-xs shadow-xs flex items-center justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-gray-900">{inv.invoice_number}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  inv.status === 'paid'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : inv.status === 'cancelled'
+                                    ? 'bg-gray-100 text-gray-500'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {inv.status}
+                              </span>
+                            </div>
+                            <p className="text-gray-700 font-bold mt-1">₹{Number(inv.total_amount).toFixed(2)}</p>
+                            <p className="text-gray-500 text-[11px]">
+                              {inv.payment_method ? `Method: ${inv.payment_method.toUpperCase()} • ` : ''}
+                              {new Date(inv.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadInvoice(inv)}
+                            disabled={downloadingKey === `inv-${inv.id}`}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-200 transition"
+                          >
+                            {downloadingKey === `inv-${inv.id}` ? '...' : '🧾 PDF'}
+                          </button>
                         </div>
                       ))}
                     </div>

@@ -33,14 +33,9 @@ const BLOOD_GROUP_INFO = {
 const BloodStockDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
-  // Defensive Guard: Only Admin, Doctor, and Blood Bank Staff can access inventory dashboard
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || !['admin', 'doctor', 'bloodbank_staff'].includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  const isAuthorizedBloodStaff = Boolean(
+    isAuthenticated && user && ['admin', 'doctor', 'bloodbank_staff'].includes(user.role)
+  );
   const canManage =
     user?.role === 'bloodbank_staff' ||
     user?.role === 'admin' ||
@@ -60,7 +55,7 @@ const BloodStockDashboard = () => {
     has_red_alert: false,
   });
 
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeViewTab, setActiveViewTab] = useState('cards'); // 'cards' | 'batches'
   const [batches, setBatches] = useState([]);
 
@@ -106,17 +101,18 @@ const BloodStockDashboard = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthorizedBloodStaff) return;
     fetchStock();
-  }, [fetchStock]);
+  }, [isAuthorizedBloodStaff, fetchStock]);
 
-  // Auto-refresh timer
+  // Auto-refresh timer (every 5s live sync)
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!isAuthorizedBloodStaff || !autoRefresh) return;
     const interval = setInterval(() => {
       fetchStock(true);
     }, 5000);
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchStock]);
+  }, [isAuthorizedBloodStaff, autoRefresh, fetchStock]);
 
   // Auto-dismiss notification
   useEffect(() => {
@@ -125,6 +121,14 @@ const BloodStockDashboard = () => {
       return () => clearTimeout(timer);
     }
   }, [successMsg]);
+
+  // Defensive Guard: Only Admin, Doctor, and Blood Bank Staff can access inventory dashboard
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthorizedBloodStaff) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Open Update Modal for a specific group
   const handleOpenUpdate = (bloodGroup = 'O-', initialAction = 'add') => {

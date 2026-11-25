@@ -18,7 +18,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from datetime import timedelta
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 
+from apps.accounts.audit import record_audit_log
 from .models import (
     BloodStock,
     BloodBatch,
@@ -79,6 +82,7 @@ class BloodStockLiveView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         # Ensure all 8 groups exist in DB
         existing_groups = set(BloodStock.objects.values_list('blood_group', flat=True))
@@ -122,7 +126,9 @@ class BloodStockUpdateView(APIView):
       - 'deduct': deduct consumed units (-)
     """
     permission_classes = [CanManageBloodBank]
+    serializer_class = BloodStockUpdateSerializer
 
+    @extend_schema(request=BloodStockUpdateSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         serializer = BloodStockUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -250,6 +256,7 @@ class MatchingDonorsView(APIView):
     """
     permission_classes = [CanViewDonors]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         blood_group = request.query_params.get('blood_group', '').strip().upper()
         city = request.query_params.get('city', '').strip()
@@ -300,7 +307,9 @@ class BloodRequestListCreateView(APIView):
           If stock is low (< 3 units or < requested units), automatically returns matching donors!
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = BloodRequestSerializer
 
+    @extend_schema(responses={200: BloodRequestSerializer(many=True)})
     def get(self, request):
         user = request.user
         queryset = BloodRequest.objects.select_related(
@@ -334,10 +343,28 @@ class BloodRequestListCreateView(APIView):
         priority = serializer.validated_data.get('priority', 'normal')
         patient_name = serializer.validated_data.get('patient_name', '')
 
-        # Resolve Patient (linked by patient ID)
+        # Resolve Patient (linked by patient ID); enforce Anti-IDOR for patients
         patient = None
         patient_id = request.data.get('patient_id') or request.data.get('patient')
-        if patient_id:
+        is_staff_caller = (
+            request.user.role in ['doctor', 'reception', 'bloodbank_staff', 'admin']
+            or request.user.is_staff
+            or request.user.is_superuser
+        )
+
+        if request.user.role == 'patient' and not (request.user.is_staff or request.user.is_superuser):
+            if not hasattr(request.user, 'patient_profile'):
+                return Response({'detail': 'Patient profile required.'}, status=status.HTTP_403_FORBIDDEN)
+            own_profile = request.user.patient_profile
+            if patient_id and str(patient_id) != str(own_profile.id):
+                return Response(
+                    {'detail': 'Access denied. Patients can only request blood for their own profile.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            patient = own_profile
+            if not patient_name:
+                patient_name = request.user.get_full_name() or request.user.username
+        elif patient_id:
             from apps.accounts.models import Patient
             patient = Patient.objects.filter(pk=patient_id).first()
             if patient and not patient_name:
@@ -355,14 +382,23 @@ class BloodRequestListCreateView(APIView):
             status='pending',
         )
 
+        record_audit_log(
+            request,
+            action='CREATE',
+            resource_type='BloodRequest',
+            resource_id=blood_request.id,
+            patient=patient,
+            details=f"Requested {units_required}u of {blood_group} ({priority}).",
+        )
+
         # Check Stock Level
         stock = BloodStock.objects.filter(blood_group=blood_group).first()
         available_units = stock.units_available if stock else 0
         is_stock_low = available_units < 3 or available_units < units_required
 
-        # If stock is low, fetch matching donors!
+        # Never expose voluntary donor phone numbers/PII to non-staff callers (patients)
         matching_donors_data = []
-        if is_stock_low:
+        if is_stock_low and is_staff_caller:
             compatible_groups = COMPATIBLE_DONORS.get(blood_group, [blood_group])
             matching_donors = Donor.objects.filter(
                 blood_group__in=compatible_groups,
@@ -396,6 +432,7 @@ class BloodRequestStatusUpdateView(APIView):
     """
     permission_classes = [CanManageBloodBank]
 
+    @extend_schema(request={'application/json': {'type': 'object', 'properties': {'status': {'type': 'string'}, 'rejection_reason': {'type': 'string'}}}}, responses={200: OpenApiTypes.OBJECT})
     def patch(self, request, pk):
         from django.shortcuts import get_object_or_404
         blood_request = get_object_or_404(BloodRequest, pk=pk)
@@ -427,6 +464,15 @@ class BloodRequestStatusUpdateView(APIView):
         if rejection_reason:
             blood_request.rejection_reason = rejection_reason
         blood_request.save()
+
+        record_audit_log(
+            request,
+            action='UPDATE',
+            resource_type='BloodRequestStatus',
+            resource_id=blood_request.id,
+            patient=blood_request.patient,
+            details=f"BloodRequest #{blood_request.id} updated to {new_status}.",
+        )
 
         return Response({
             "message": f"Blood Request #{blood_request.id} status updated to {new_status.upper()}.",

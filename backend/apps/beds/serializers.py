@@ -43,33 +43,40 @@ class BedSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    def _can_view_patient_pii(self):
+        request = self.context.get('request') if self.context else None
+        if not request or not getattr(request, 'user', None) or not request.user.is_authenticated:
+            return False
+        user = request.user
+        return user.role in ['admin', 'doctor', 'reception'] or user.is_staff or user.is_superuser
+
     def get_current_patient_name(self, obj):
-        """If bed is occupied, return current patient's name if admission exists."""
-        if obj.status == 'occupied':
+        """If bed is occupied, return current patient's name only for authorized clinical staff."""
+        if obj.status == 'occupied' and self._can_view_patient_pii():
             admission = obj.admissions.filter(status='admitted').first()
             if admission and admission.patient and admission.patient.user:
                 return admission.patient.user.get_full_name() or admission.patient.user.username
         return None
 
     def get_current_patient_id(self, obj):
-        """If bed is occupied, return patient ID."""
-        if obj.status == 'occupied':
+        """If bed is occupied, return patient ID only for authorized clinical staff."""
+        if obj.status == 'occupied' and self._can_view_patient_pii():
             admission = obj.admissions.filter(status='admitted').first()
             if admission and admission.patient:
                 return admission.patient.id
         return None
 
     def get_current_patient_blood_group(self, obj):
-        """If bed is occupied, return patient's blood group."""
-        if obj.status == 'occupied':
+        """If bed is occupied, return patient's blood group only for authorized clinical staff."""
+        if obj.status == 'occupied' and self._can_view_patient_pii():
             admission = obj.admissions.filter(status='admitted').first()
             if admission and admission.patient:
                 return admission.patient.blood_group
         return None
 
     def get_current_admission_id(self, obj):
-        """If bed is occupied, return active admission ID."""
-        if obj.status == 'occupied':
+        """If bed is occupied, return active admission ID only for authorized clinical staff."""
+        if obj.status == 'occupied' and self._can_view_patient_pii():
             admission = obj.admissions.filter(status='admitted').first()
             if admission:
                 return admission.id

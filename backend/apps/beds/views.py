@@ -21,6 +21,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Count, Q
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 
 from .models import Ward, Bed, Admission
 from .serializers import (
@@ -31,6 +33,7 @@ from .serializers import (
     AutoAdmitSerializer,
     DischargeSerializer,
 )
+from apps.accounts.audit import record_audit_log
 from apps.accounts.models import Patient, Doctor
 from apps.opd.models import Token
 
@@ -40,29 +43,28 @@ from apps.opd.models import Token
 # ─────────────────────────────────────────────
 class IsAdminOrReadOnly(permissions.BasePermission):
     """
-    Allows read-only access for authenticated users;
+    Allows read-only access for clinical staff (Admin, Doctor, Reception);
     restricts creation/update/deletion to Admins.
     """
     def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
         if request.method in permissions.SAFE_METHODS:
-            return request.user and request.user.is_authenticated
-        return bool(
-            request.user and
-            request.user.is_authenticated and
-            (request.user.role == 'admin' or request.user.is_staff)
-        )
+            return request.user.role in ['admin', 'doctor', 'reception'] or request.user.is_staff
+        return bool(request.user.role == 'admin' or request.user.is_staff)
 
 
 class CanManageBeds(permissions.BasePermission):
     """
-    Allows Admins and Doctors to update bed status (e.g. mark cleaning/occupied).
+    Allows Admins, Doctors, and Reception to manage beds/admissions.
+    Patients only access their own admissions endpoints via queryset filtering.
     """
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
         if request.method in permissions.SAFE_METHODS:
             return True
-        return request.user.role in ['admin', 'doctor'] or request.user.is_staff
+        return request.user.role in ['admin', 'doctor', 'reception'] or request.user.is_staff
 
 
 # ─────────────────────────────────────────────
@@ -140,13 +142,18 @@ class BedListCreateView(generics.ListCreateAPIView):
 
 class BedDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    GET: Retrieve single bed
-    PUT/PATCH: Update bed attributes (Admin or Doctor)
+    GET: Retrieve single bed (Clinical Staff / Admin only)
+    PUT/PATCH: Update bed attributes (Admin, Doctor, or Reception)
     DELETE: Delete bed (Admin only)
     """
     queryset = Bed.objects.select_related('ward').all()
     serializer_class = BedSerializer
-    permission_classes = [CanManageBeds]
+    permission_classes = [IsAdminOrReadOnly]
+
+    def get_permissions(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return [CanManageBeds()]
+        return [IsAdminOrReadOnly()]
 
 
 class BedQuickStatusUpdateView(APIView):
@@ -156,7 +163,9 @@ class BedQuickStatusUpdateView(APIView):
     Accepts: { "status": "available" | "occupied" | "cleaning" | "maintenance" }
     """
     permission_classes = [CanManageBeds]
+    serializer_class = BedStatusUpdateSerializer
 
+    @extend_schema(request=BedStatusUpdateSerializer, responses={200: OpenApiTypes.OBJECT})
     def patch(self, request, pk):
         bed = get_object_or_404(Bed, pk=pk)
         new_status = request.data.get('status')
@@ -184,17 +193,11 @@ class BedQuickStatusUpdateView(APIView):
 class BedLiveOverviewView(APIView):
     """
     GET /api/beds/overview/
-    Returns live bed availability summary with color-coded counts:
-      - total_beds
-      - available_beds (Green)
-      - occupied_beds (Red)
-      - cleaning_beds (Amber)
-      - occupancy_percentage
-      - wards list with nested beds and ward-level stats
-      - breakdown by ward type (General, ICU, Private)
+    Returns live bed availability summary for clinical staff (Admin, Doctor, Reception).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         wards = Ward.objects.prefetch_related('beds__admissions__patient__user').all()
 
@@ -216,7 +219,7 @@ class BedLiveOverviewView(APIView):
 
         wards_data = []
         for ward in wards:
-            w_serializer = WardSerializer(ward)
+            w_serializer = WardSerializer(ward, context={'request': request})
             w_data = w_serializer.data
             wards_data.append(w_data)
 
@@ -251,7 +254,9 @@ class AutoAdmitPatientView(APIView):
     System automatically assigns the first available bed of the chosen ward_type.
     """
     permission_classes = [CanManageBeds]
+    serializer_class = AutoAdmitSerializer
 
+    @extend_schema(request=AutoAdmitSerializer, responses={201: OpenApiTypes.OBJECT})
     def post(self, request):
         serializer = AutoAdmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -337,6 +342,15 @@ class AutoAdmitPatientView(APIView):
         if token:
             token.status = 'admitted'
             token.save()
+
+        record_audit_log(
+            request,
+            action='CREATE',
+            resource_type='BedAdmission',
+            resource_id=admission.id,
+            patient=patient,
+            details=f"Admitted to {assigned_bed.ward.name} Bed {assigned_bed.bed_number}.",
+        )
 
         admission_serializer = AdmissionSerializer(admission)
         return Response({
@@ -429,7 +443,9 @@ class AdmissionDischargeView(APIView):
     Prompt requirement: On Discharge, bed becomes Available again.
     """
     permission_classes = [CanManageBeds]
+    serializer_class = DischargeSerializer
 
+    @extend_schema(request=DischargeSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request, pk):
         admission = get_object_or_404(Admission, pk=pk)
 
@@ -450,6 +466,15 @@ class AdmissionDischargeView(APIView):
         bed = admission.bed
         bed.status = 'available'
         bed.save()
+
+        record_audit_log(
+            request,
+            action='UPDATE',
+            resource_type='BedDischarge',
+            resource_id=admission.id,
+            patient=admission.patient,
+            details=f"Discharged from Bed {bed.bed_number}. Notes: {discharge_notes[:120]}",
+        )
 
         return Response({
             "message": f"Patient {admission.patient.user.get_full_name() or admission.patient.user.username} discharged successfully. Bed {bed.bed_number} is now Available again.",

@@ -1,8 +1,7 @@
 /**
  * src/context/AuthContext.jsx
  * ----------------------------
- * Central Authentication Context for SmartCare.
- * Provides user state, login/register/logout methods, and role helpers.
+ * Central Authentication Context managing JWT tokens, logout blacklisting, and role routing.
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -15,7 +14,6 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Helper: Get dashboard redirect URL based on role
   const getDashboardPath = (role) => {
     switch (role) {
       case 'patient':
@@ -33,7 +31,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Check saved session on initial app load
   useEffect(() => {
     const savedToken = localStorage.getItem('smartcare_access_token');
     const savedUser = localStorage.getItem('smartcare_user');
@@ -44,46 +41,41 @@ export const AuthProvider = ({ children }) => {
         setUser(JSON.parse(savedUser));
       } catch (err) {
         console.error('Failed to parse cached user data', err);
-        localStorage.clear();
+        localStorage.removeItem('smartcare_access_token');
+        localStorage.removeItem('smartcare_refresh_token');
+        localStorage.removeItem('smartcare_user');
       }
     }
     setLoading(false);
   }, []);
 
-  // Login handler
   const login = async (username, password) => {
     const data = await authService.login({ username, password });
-    
-    // Save tokens and user info
     localStorage.setItem('smartcare_access_token', data.access);
     localStorage.setItem('smartcare_refresh_token', data.refresh);
     localStorage.setItem('smartcare_user', JSON.stringify(data.user));
-
     setToken(data.access);
     setUser(data.user);
-
     return data.user;
   };
 
-  // Register handler
   const register = async (userData) => {
     const data = await authService.register(userData);
-
-    // Auto-login upon registration
     if (data.access && data.user) {
       localStorage.setItem('smartcare_access_token', data.access);
       localStorage.setItem('smartcare_refresh_token', data.refresh);
       localStorage.setItem('smartcare_user', JSON.stringify(data.user));
-
       setToken(data.access);
       setUser(data.user);
     }
-
     return data.user;
   };
 
-  // Logout handler
   const logout = () => {
+    const refreshToken = localStorage.getItem('smartcare_refresh_token');
+    if (refreshToken) {
+      authService.logout(refreshToken).catch(() => {});
+    }
     localStorage.removeItem('smartcare_access_token');
     localStorage.removeItem('smartcare_refresh_token');
     localStorage.removeItem('smartcare_user');
@@ -105,7 +97,6 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom Hook to consume AuthContext cleanly
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

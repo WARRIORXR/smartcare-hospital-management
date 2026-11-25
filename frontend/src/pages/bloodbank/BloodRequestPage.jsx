@@ -22,14 +22,7 @@ const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 const BloodRequestPage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
-  // Defensive Guard: Must be authenticated
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />;
-  }
-
+  const isAuthUser = Boolean(isAuthenticated && user);
   const isMedicalStaff =
     user?.role === 'doctor' ||
     user?.role === 'bloodbank_staff' ||
@@ -93,8 +86,17 @@ const BloodRequestPage = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthUser) return;
     loadData();
-  }, [loadData]);
+  }, [isAuthUser, loadData]);
+
+  // Defensive Guard: Must be authenticated
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthUser) {
+    return <Navigate to="/login" replace />;
+  }
 
   // Handler for quick-selecting an active inpatient
   const handleSelectInpatient = (admissionId) => {

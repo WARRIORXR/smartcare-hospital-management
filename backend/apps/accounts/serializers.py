@@ -1,14 +1,20 @@
 """
 apps/accounts/serializers.py
 =============================
-Serializers for User authentication, profiles, and Admin management of
-Departments and Doctors.
+Serializers for JWT auth, strict patient self-registration, password reset,
+hospital staff provisioning, doctor leave/feedback, and audit logs.
 """
 
-from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
-from .models import User, Patient, Doctor, Department
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Avg
+from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from .models import User, Patient, Doctor, Department, DoctorLeave, DoctorFeedback, AuditLog
 
 
 # ─────────────────────────────────────────────
@@ -16,9 +22,9 @@ from .models import User, Patient, Doctor, Department
 # ─────────────────────────────────────────────
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Custom JWT serializer that adds user role and details:
-      1. Inside the encrypted JWT token payload (claims)
-      2. Inside the API response JSON body
+    Custom JWT serializer adding user role and profile summary.
+    Enforces ALLOW_DEMO_ADMIN guard so default weak admin credentials
+    cannot log in on production deployments.
     """
 
     @classmethod
@@ -31,7 +37,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
+        raw_password = attrs.get('password', '')
         data = super().validate(attrs)
+
+        # Safety barrier: refuse stale default admin123 demo password when demo admin is disabled
+        if (
+            not getattr(settings, 'ALLOW_DEMO_ADMIN', False)
+            and (self.user.role == 'admin' or self.user.is_staff)
+            and raw_password == 'admin123'
+        ):
+            raise AuthenticationFailed(
+                'Demo administrator credentials are disabled in this environment.'
+            )
 
         data['user'] = {
             'id': self.user.id,
@@ -41,13 +58,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'last_name': self.user.last_name,
             'role': self.user.role,
             'phone': self.user.phone,
+            'is_staff': self.user.is_staff,
         }
 
         if self.user.role == 'patient' and hasattr(self.user, 'patient_profile'):
             data['user']['patient_id'] = self.user.patient_profile.patient_id
+            data['user']['patient_profile_id'] = self.user.patient_profile.id
             data['user']['blood_group'] = self.user.patient_profile.blood_group
 
         if self.user.role == 'doctor' and hasattr(self.user, 'doctor_profile'):
+            data['user']['doctor_profile_id'] = self.user.doctor_profile.id
             data['user']['specialization'] = self.user.doctor_profile.specialization
             data['user']['room_number'] = self.user.doctor_profile.room_number
             data['user']['avg_consult_minutes'] = self.user.doctor_profile.avg_consult_minutes
@@ -56,7 +76,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 # ─────────────────────────────────────────────
-# 2. User Serializer
+# 2. User & Staff Serializers
 # ─────────────────────────────────────────────
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
@@ -71,6 +91,55 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name() or obj.username
+
+
+class AdminStaffCreateSerializer(serializers.ModelSerializer):
+    """Admin-only serializer for provisioning Reception, Blood Bank, Doctor, or Admin accounts."""
+    password = serializers.CharField(write_only=True, required=True)
+    role = serializers.ChoiceField(choices=User.ROLE_CHOICES)
+    department = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(), required=False, allow_null=True
+    )
+    specialization = serializers.CharField(required=False, allow_blank=True, default='')
+    room_number = serializers.CharField(required=False, allow_blank=True, default='Room 101')
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'password', 'first_name', 'last_name',
+            'phone', 'role', 'department', 'specialization', 'room_number'
+        ]
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        validate_password(attrs['password'])
+        if User.objects.filter(email__iexact=attrs.get('email', '')).exists():
+            raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+        return attrs
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        dept = validated_data.pop('department', None)
+        spec = validated_data.pop('specialization', '')
+        room = validated_data.pop('room_number', 'Room 101')
+        role = validated_data['role']
+
+        user = User(**validated_data)
+        if role == 'admin':
+            user.is_staff = True
+        user.set_password(password)
+        user.save()
+
+        if role == 'doctor':
+            Doctor.objects.create(
+                user=user,
+                department=dept,
+                specialization=spec,
+                room_number=room,
+            )
+        elif role == 'patient':
+            Patient.objects.create(user=user, patient_id=f'PAT-{user.id:04d}')
+        return user
 
 
 # ─────────────────────────────────────────────
@@ -105,37 +174,78 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
 
 # ─────────────────────────────────────────────
-# 5. Doctor Profile & Detail Serializer
+# 5. Doctor Leave & Feedback Serializers
+# ─────────────────────────────────────────────
+class DoctorLeaveSerializer(serializers.ModelSerializer):
+    doctor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DoctorLeave
+        fields = ['id', 'doctor', 'doctor_name', 'start_date', 'end_date', 'reason', 'is_approved', 'created_at']
+        read_only_fields = ['id', 'created_at']
+        extra_kwargs = {'doctor': {'required': False}}
+
+    def get_doctor_name(self, obj):
+        return f"Dr. {obj.doctor.user.get_full_name() or obj.doctor.user.username}"
+
+    def validate(self, attrs):
+        start = attrs.get('start_date')
+        end = attrs.get('end_date')
+        if start and end and end < start:
+            raise serializers.ValidationError({'end_date': 'End date cannot be earlier than start date.'})
+        return attrs
+
+
+class DoctorFeedbackSerializer(serializers.ModelSerializer):
+    patient_display = serializers.SerializerMethodField()
+    doctor_name = serializers.SerializerMethodField()
+    token_code = serializers.CharField(source='token.token_code', read_only=True)
+
+    class Meta:
+        model = DoctorFeedback
+        fields = [
+            'id', 'doctor', 'doctor_name', 'patient', 'patient_display',
+            'token', 'token_code', 'rating', 'comment', 'created_at'
+        ]
+        read_only_fields = ['id', 'patient', 'created_at']
+
+    def get_patient_display(self, obj):
+        first = obj.patient.user.first_name or 'Patient'
+        return f"{first} ({obj.patient.patient_id or 'Verified'})"
+
+    def get_doctor_name(self, obj):
+        return f"Dr. {obj.doctor.user.get_full_name() or obj.doctor.user.username}"
+
+
+# ─────────────────────────────────────────────
+# 6. Doctor Profile & Detail Serializer
 # ─────────────────────────────────────────────
 class DoctorDetailSerializer(serializers.ModelSerializer):
-    """
-    Rich Doctor details for Patient Directory and Admin view.
-    Includes real-time live queue load (how many patients are waiting today).
-    """
     user_id = serializers.IntegerField(source='user.id', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
     doctor_name = serializers.SerializerMethodField()
-    email = serializers.EmailField(source='user.email', read_only=True)
-    phone = serializers.CharField(source='user.phone', read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
 
-    # Live Queue Load fields
     waiting_patients_count = serializers.SerializerMethodField()
     estimated_wait_time = serializers.SerializerMethodField()
     today_total_tokens = serializers.SerializerMethodField()
     current_serving_token = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    feedback_count = serializers.SerializerMethodField()
+    upcoming_leaves = serializers.SerializerMethodField()
 
     class Meta:
         model = Doctor
         fields = [
             'id', 'user_id', 'username', 'first_name', 'last_name', 'doctor_name',
-            'email', 'phone', 'department', 'department_name', 'specialization',
+            'department', 'department_name', 'specialization',
             'qualification', 'experience_years', 'consultation_fee',
             'room_number', 'avg_consult_minutes', 'available_days',
             'is_available', 'waiting_patients_count', 'estimated_wait_time',
-            'today_total_tokens', 'current_serving_token', 'created_at'
+            'today_total_tokens', 'current_serving_token',
+            'average_rating', 'feedback_count', 'upcoming_leaves', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -145,7 +255,6 @@ class DoctorDetailSerializer(serializers.ModelSerializer):
 
     def get_waiting_patients_count(self, obj):
         from apps.opd.models import Token
-        from django.utils import timezone
         today = timezone.now().date()
         return Token.objects.filter(doctor=obj, appointment_date=today, status='waiting').count()
 
@@ -156,17 +265,30 @@ class DoctorDetailSerializer(serializers.ModelSerializer):
 
     def get_today_total_tokens(self, obj):
         from apps.opd.models import Queue
-        from django.utils import timezone
         today = timezone.now().date()
         queue = Queue.objects.filter(doctor=obj, queue_date=today).first()
         return queue.total_tokens if queue else 0
 
     def get_current_serving_token(self, obj):
         from apps.opd.models import Queue
-        from django.utils import timezone
         today = timezone.now().date()
         queue = Queue.objects.filter(doctor=obj, queue_date=today).first()
         return queue.current_token if queue else 0
+
+    def get_average_rating(self, obj):
+        avg = obj.feedbacks.aggregate(avg=Avg('rating'))['avg']
+        return round(float(avg), 1) if avg is not None else None
+
+    def get_feedback_count(self, obj):
+        return obj.feedbacks.count()
+
+    def get_upcoming_leaves(self, obj):
+        today = timezone.now().date()
+        leaves = obj.leaves.filter(end_date__gte=today, is_approved=True)[:5]
+        return [
+            {'id': l.id, 'start_date': l.start_date, 'end_date': l.end_date, 'reason': l.reason}
+            for l in leaves
+        ]
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
@@ -184,12 +306,9 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
 
 
 # ─────────────────────────────────────────────
-# 6. Doctor Management Serializer (Admin Create/Update)
+# 7. Doctor Management Serializer (Admin Create/Update)
 # ─────────────────────────────────────────────
 class DoctorManageSerializer(serializers.ModelSerializer):
-    """
-    Admin serializer to create and update Doctors along with their User account.
-    """
     username = serializers.CharField(write_only=True, required=False)
     password = serializers.CharField(write_only=True, required=False, style={'input_type': 'password'})
     email = serializers.EmailField(write_only=True, required=False)
@@ -209,7 +328,7 @@ class DoctorManageSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         username = validated_data.pop('username', None)
-        password = validated_data.pop('password', 'Doctor@123')
+        password = validated_data.pop('password', None)
         email = validated_data.pop('email', f"{username}@hospital.local")
         first_name = validated_data.pop('first_name', '')
         last_name = validated_data.pop('last_name', '')
@@ -217,11 +336,13 @@ class DoctorManageSerializer(serializers.ModelSerializer):
 
         if not username:
             raise serializers.ValidationError({"username": "Username is required to create a doctor."})
+        if not password:
+            raise serializers.ValidationError({"password": "A strong password is required to create a doctor."})
+        validate_password(password)
 
         if User.objects.filter(username=username).exists():
             raise serializers.ValidationError({"username": "This username already exists."})
 
-        # Create doctor user account
         user = User.objects.create(
             username=username,
             email=email,
@@ -233,12 +354,10 @@ class DoctorManageSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        # Create doctor profile
         doctor = Doctor.objects.create(user=user, **validated_data)
         return doctor
 
     def update(self, instance, validated_data):
-        # Update linked user fields if provided
         user = instance.user
         if 'first_name' in validated_data:
             user.first_name = validated_data.pop('first_name')
@@ -249,13 +368,12 @@ class DoctorManageSerializer(serializers.ModelSerializer):
         if 'phone' in validated_data:
             user.phone = validated_data.pop('phone')
         if 'password' in validated_data:
-            user.set_password(validated_data.pop('password'))
+            new_pw = validated_data.pop('password')
+            validate_password(new_pw, user)
+            user.set_password(new_pw)
         user.save()
 
-        # Discard write-only username if present in update
         validated_data.pop('username', None)
-
-        # Update doctor model fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -263,11 +381,12 @@ class DoctorManageSerializer(serializers.ModelSerializer):
 
 
 # ─────────────────────────────────────────────
-# 7. Registration Serializer
+# 8. Strict Patient Self-Registration Serializer
 # ─────────────────────────────────────────────
 class RegisterSerializer(serializers.ModelSerializer):
     """
-    Handles self-registration for patients, doctors, and admins.
+    Public self-registration is strictly restricted to the 'patient' role
+    and enforces strong password complexity rules.
     """
     password = serializers.CharField(
         write_only=True,
@@ -279,22 +398,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         required=True,
         style={'input_type': 'password'},
     )
-
+    role = serializers.CharField(required=False, default='patient')
     gender = serializers.CharField(required=False, allow_blank=True)
     blood_group = serializers.CharField(required=False, allow_blank=True)
     date_of_birth = serializers.DateField(required=False, allow_null=True)
     address = serializers.CharField(required=False, allow_blank=True)
-
-    department = serializers.PrimaryKeyRelatedField(
-        queryset=Department.objects.all(),
-        required=False,
-        allow_null=True
-    )
-    specialization = serializers.CharField(required=False, allow_blank=True)
-    qualification = serializers.CharField(required=False, allow_blank=True)
-    experience_years = serializers.IntegerField(required=False, default=0)
-    room_number = serializers.CharField(required=False, allow_blank=True)
-    avg_consult_minutes = serializers.IntegerField(required=False, default=15)
 
     class Meta:
         model = User
@@ -302,25 +410,39 @@ class RegisterSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'password', 'password_confirm',
             'first_name', 'last_name', 'phone', 'role',
             'gender', 'blood_group', 'date_of_birth', 'address',
-            'department', 'specialization', 'qualification', 'experience_years',
-            'room_number', 'avg_consult_minutes'
         ]
 
     def validate(self, attrs):
+        requested_role = attrs.get('role', 'patient')
+        if requested_role and requested_role != 'patient':
+            raise serializers.ValidationError({
+                "role": "Public registration is restricted to patients only. Staff accounts must be created by an administrator."
+            })
+
         if attrs.get('password') != attrs.get('password_confirm'):
             raise serializers.ValidationError({"password": "Passwords do not match."})
 
-        if len(attrs.get('password')) < 6:
-            raise serializers.ValidationError({"password": "Password must be at least 6 characters."})
+        # Enforce Django's strong password validators + custom complexity rules
+        candidate_user = User(
+            username=attrs.get('username', ''),
+            email=attrs.get('email', ''),
+            first_name=attrs.get('first_name', ''),
+            last_name=attrs.get('last_name', ''),
+        )
+        try:
+            validate_password(attrs['password'], user=candidate_user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)})
 
         email = attrs.get('email')
-        if User.objects.filter(email=email).exists():
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError({"email": "A user with this email already exists."})
 
         return attrs
 
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
+        validated_data.pop('role', None)
         password = validated_data.pop('password')
 
         gender = validated_data.pop('gender', '')
@@ -328,49 +450,59 @@ class RegisterSerializer(serializers.ModelSerializer):
         date_of_birth = validated_data.pop('date_of_birth', None)
         address = validated_data.pop('address', '')
 
-        department = validated_data.pop('department', None)
-        specialization = validated_data.pop('specialization', '')
-        qualification = validated_data.pop('qualification', '')
-        experience_years = validated_data.pop('experience_years', 0)
-        room_number = validated_data.pop('room_number', 'Room 101')
-        avg_consult_minutes = validated_data.pop('avg_consult_minutes', 15)
-
-        role = validated_data.get('role', 'patient')
-
         user = User(
             username=validated_data['username'],
             email=validated_data['email'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             phone=validated_data.get('phone', ''),
-            role=role,
+            role='patient',
         )
-
-        if role == 'admin':
-            user.is_staff = True
-
         user.set_password(password)
         user.save()
 
-        if role == 'patient':
-            patient_id = f"PAT-{user.id:04d}"
-            Patient.objects.create(
-                user=user,
-                patient_id=patient_id,
-                gender=gender,
-                blood_group=blood_group,
-                date_of_birth=date_of_birth,
-                address=address,
-            )
-        elif role == 'doctor':
-            Doctor.objects.create(
-                user=user,
-                department=department,
-                specialization=specialization,
-                qualification=qualification,
-                experience_years=experience_years,
-                room_number=room_number,
-                avg_consult_minutes=avg_consult_minutes,
-            )
-
+        Patient.objects.create(
+            user=user,
+            patient_id=f"PAT-{user.id:04d}",
+            gender=gender,
+            blood_group=blood_group,
+            date_of_birth=date_of_birth,
+            address=address,
+        )
         return user
+
+
+# ─────────────────────────────────────────────
+# 9. Password Reset & AuditLog Serializers
+# ─────────────────────────────────────────────
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField(required=True)
+    token = serializers.CharField(required=True)
+    new_password = serializers.CharField(write_only=True, required=True)
+    confirm_password = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({'new_password': 'Passwords do not match.'})
+        try:
+            validate_password(attrs['new_password'])
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'new_password': list(exc.messages)})
+        return attrs
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    patient_code = serializers.CharField(source='patient.patient_id', read_only=True)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id', 'actor', 'actor_username', 'actor_role', 'action',
+            'resource_type', 'resource_id', 'patient', 'patient_code',
+            'ip_address', 'user_agent', 'details', 'created_at'
+        ]
+        read_only_fields = fields

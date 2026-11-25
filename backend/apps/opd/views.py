@@ -1,35 +1,34 @@
 """
 apps/opd/views.py
 ==================
-Views for OPD Token Generation, Patient Token Tracking,
-and Doctor Live Queue Management (Call Next, Skip, Complete).
-
-Endpoints:
-  - POST /api/opd/tokens/generate/    -> Generate new OPD Token (Patient or Reception)
-  - GET  /api/opd/tokens/my-tokens/   -> List all tokens for logged-in Patient
-  - GET  /api/opd/tokens/<id>/        -> Retrieve token details & real-time position
-  - POST /api/opd/tokens/<id>/cancel/ -> Cancel a waiting token
-
-  - GET  /api/opd/doctor/queue/       -> Doctor: view today's waiting list in priority order
-  - POST /api/opd/doctor/call-next/   -> Doctor: call next waiting patient (status -> Called)
-  - POST /api/opd/doctor/complete/    -> Doctor: complete consultation (status -> Completed)
-  - POST /api/opd/doctor/skip/        -> Doctor: skip absent patient (status -> Skipped)
+Views for OPD Token Generation, Advance Time-Slot Booking, Patient Notifications,
+Doctor Live Queue Management, and Role-Secured Display Screen Data.
 """
 
-from rest_framework import status, generics, permissions
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from datetime import datetime
+from django.db.models import Case, IntegerField, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db.models import Case, When, Value, IntegerField
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
+from rest_framework import generics, permissions, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .models import Token, Queue
-from .serializers import TokenSerializer, TokenGenerateSerializer
-from apps.accounts.models import Doctor
+from apps.accounts.audit import record_audit_log
+from apps.accounts.models import Doctor, DoctorLeave
+from .models import Notification, Queue, Token
+from .notifications import dispatch_queue_proximity_notifications
+from .serializers import (
+    STANDARD_TIME_SLOTS,
+    NotificationSerializer,
+    PublicDisplayTokenSerializer,
+    TokenGenerateSerializer,
+    TokenSerializer,
+)
 
 
-# Helper: Priority annotation for sorting queue
 def get_priority_order():
     return Case(
         When(priority='emergency', then=Value(1)),
@@ -40,34 +39,101 @@ def get_priority_order():
     )
 
 
-class TokenGenerateView(APIView):
-    """
-    POST /api/opd/tokens/generate/
-    Generates a new token for a chosen doctor.
-    """
-    permission_classes = [IsAuthenticated]
+class IsClinicalStaffOrAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and (
+                request.user.role in ['admin', 'doctor', 'reception']
+                or request.user.is_staff
+                or request.user.is_superuser
+            )
+        )
 
+
+class TokenGenerateView(APIView):
+    """POST /api/opd/tokens/generate/ -> Book walk-in token or advance appointment slot."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = TokenGenerateSerializer
+
+    @extend_schema(request=TokenGenerateSerializer, responses={201: TokenSerializer})
     def post(self, request):
+        if request.user.role not in ['patient', 'reception', 'admin', 'doctor'] and not request.user.is_staff:
+            return Response({"detail": "Not authorized to generate OPD tokens."}, status=status.HTTP_403_FORBIDDEN)
+
         serializer = TokenGenerateSerializer(
             data=request.data,
             context={'request': request}
         )
         if serializer.is_valid():
             token = serializer.save()
-            return Response(
-                TokenSerializer(token).data,
-                status=status.HTTP_201_CREATED
+            record_audit_log(
+                request,
+                action='CREATE',
+                resource_type='OPDToken',
+                resource_id=token.id,
+                patient=token.patient,
+                details=f"Generated {token.token_code} for {token.appointment_date} {token.time_slot or 'Walk-In'}.",
             )
+            # Trigger proximity check immediately if appointment is today
+            if token.appointment_date == timezone.now().date():
+                dispatch_queue_proximity_notifications(token.doctor, token.appointment_date)
+            return Response(TokenSerializer(token).data, status=status.HTTP_201_CREATED)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class MyTokensView(APIView):
-    """
-    GET /api/opd/tokens/my-tokens/
-    Returns all OPD tokens for the logged-in patient.
-    """
+class DoctorAvailableSlotsView(APIView):
+    """GET /api/opd/doctors/<doctor_id>/slots/?date=YYYY-MM-DD -> Check leave & available time slots."""
+
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request, doctor_id):
+        doctor = get_object_or_404(Doctor, pk=doctor_id)
+        date_str = request.query_params.get('date')
+        today = timezone.now().date()
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({"detail": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            target_date = today
+
+        leave = DoctorLeave.objects.filter(
+            doctor=doctor, is_approved=True, start_date__lte=target_date, end_date__gte=target_date
+        ).first()
+
+        slots_info = []
+        for slot in STANDARD_TIME_SLOTS:
+            booked = Token.objects.filter(
+                doctor=doctor, appointment_date=target_date, time_slot=slot
+            ).exclude(status__in=['cancelled', 'skipped']).count()
+            slots_info.append({
+                "time_slot": slot,
+                "booked_count": booked,
+                "capacity": 4,
+                "available": (not leave) and booked < 4,
+            })
+
+        return Response({
+            "doctor_id": doctor.id,
+            "date": target_date.isoformat(),
+            "is_on_leave": leave is not None,
+            "leave_reason": leave.reason if leave else None,
+            "slots": slots_info,
+        }, status=status.HTTP_200_OK)
+
+
+class MyTokensView(APIView):
+    """GET /api/opd/tokens/my-tokens/ -> List all OPD tokens for the logged-in patient."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TokenSerializer(many=True)})
     def get(self, request):
         user = request.user
         if not hasattr(user, 'patient_profile'):
@@ -92,36 +158,48 @@ class TokenDetailView(generics.RetrieveAPIView):
     serializer_class = TokenSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
+    def get_object(self):
+        token = get_object_or_404(
+            Token.objects.select_related('patient__user', 'doctor', 'doctor__user', 'department'),
+            pk=self.kwargs['pk']
+        )
         user = self.request.user
-        qs = Token.objects.select_related('doctor', 'doctor__user', 'department')
         if user.role == 'patient' and not (user.is_staff or user.is_superuser):
-            if hasattr(user, 'patient_profile'):
-                return qs.filter(patient=user.patient_profile)
-            return qs.none()
-        return qs.all()
+            if not hasattr(user, 'patient_profile') or token.patient_id != user.patient_profile.id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to view another patient's token.")
+        elif user.role not in ['doctor', 'reception', 'admin'] and not user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Not authorized to access OPD token details.")
+        return token
 
 
 class TokenListView(generics.ListAPIView):
-    """
-    GET /api/opd/tokens/
-    Lists today's tokens with optional filters: ?status=waiting&doctor=1
-    Used for cross-module integration (e.g. Bed module selecting an OPD patient to admit).
-    """
+    """GET /api/opd/tokens/ -> Today's (or ?date=) tokens with strict Anti-IDOR isolation."""
+
     serializer_class = TokenSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        today = timezone.now().date()
-        qs = Token.objects.filter(appointment_date=today).select_related(
+        date_str = self.request.query_params.get('date')
+        target_date = timezone.now().date()
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        qs = Token.objects.filter(appointment_date=target_date).select_related(
             'patient__user', 'doctor__user', 'doctor__department', 'department'
         ).order_by('token_number')
 
-        # Anti-IDOR: Patients can only list their own tokens
         if user.role == 'patient' and not (user.is_staff or user.is_superuser):
             if hasattr(user, 'patient_profile'):
                 return qs.filter(patient=user.patient_profile)
+            return qs.none()
+
+        if user.role not in ['doctor', 'reception', 'admin'] and not user.is_staff:
             return qs.none()
 
         status_param = self.request.query_params.get('status')
@@ -138,6 +216,7 @@ class TokenListView(generics.ListAPIView):
 class TokenCancelView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request=None, responses={200: OpenApiTypes.OBJECT})
     def post(self, request, pk):
         token = get_object_or_404(Token, pk=pk)
 
@@ -147,6 +226,8 @@ class TokenCancelView(APIView):
                     {"detail": "You do not have permission to cancel this token."},
                     status=status.HTTP_403_FORBIDDEN
                 )
+        elif request.user.role not in ['reception', 'admin', 'doctor'] and not request.user.is_staff:
+            return Response({"detail": "Not authorized to cancel tokens."}, status=status.HTTP_403_FORBIDDEN)
 
         if token.status != 'waiting':
             return Response(
@@ -156,7 +237,16 @@ class TokenCancelView(APIView):
 
         token.status = 'cancelled'
         token.save()
+        dispatch_queue_proximity_notifications(token.doctor, token.appointment_date)
 
+        record_audit_log(
+            request,
+            action='UPDATE',
+            resource_type='OPDTokenCancelled',
+            resource_id=token.id,
+            patient=token.patient,
+            details=f"Token {token.token_code} cancelled.",
+        )
         return Response({
             "message": f"Token {token.token_code} has been cancelled.",
             "token": TokenSerializer(token).data
@@ -166,26 +256,17 @@ class TokenCancelView(APIView):
 # ─────────────────────────────────────────────
 # DOCTOR QUEUE MANAGEMENT ENDPOINTS
 # ─────────────────────────────────────────────
-
 class DoctorQueueView(APIView):
-    """
-    GET /api/opd/doctor/queue/
-    Returns today's live queue for the logged-in Doctor:
-      - Currently called patient
-      - Waiting list in priority order (Emergency -> Senior Citizen -> Normal, then token_number)
-      - Completed list
-      - Skipped list
-      - Queue statistics
-    """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         user = request.user
         doctor = None
 
         if hasattr(user, 'doctor_profile'):
             doctor = user.doctor_profile
-        elif user.role == 'admin' and request.query_params.get('doctor_id'):
+        elif (user.role == 'admin' or user.is_staff) and request.query_params.get('doctor_id'):
             doctor = get_object_or_404(Doctor, id=request.query_params.get('doctor_id'))
         else:
             return Response(
@@ -194,8 +275,6 @@ class DoctorQueueView(APIView):
             )
 
         today = timezone.now().date()
-
-        # Doctor's daily Queue record
         queue, _ = Queue.objects.get_or_create(
             doctor=doctor,
             queue_date=today,
@@ -207,23 +286,14 @@ class DoctorQueueView(APIView):
         )
 
         all_today_tokens = Token.objects.filter(
-            doctor=doctor,
-            appointment_date=today
+            doctor=doctor, appointment_date=today
         ).select_related('patient', 'patient__user', 'department')
 
-        # 1. Currently called patient
         current_called = all_today_tokens.filter(status__in=['called', 'in_progress']).first()
-
-        # 2. Waiting list in strict priority order:
-        # Emergency (1) -> Senior Citizen (2) -> Normal (3), then sequential token_number
         waiting_list = all_today_tokens.filter(status='waiting').annotate(
             priority_rank=get_priority_order()
         ).order_by('priority_rank', 'token_number')
-
-        # 3. Completed list
         completed_list = all_today_tokens.filter(status='completed').order_by('-updated_at')
-
-        # 4. Skipped list
         skipped_list = all_today_tokens.filter(status='skipped').order_by('-updated_at')
 
         return Response({
@@ -250,32 +320,17 @@ class DoctorQueueView(APIView):
 
 
 class DoctorCallNextView(APIView):
-    """
-    POST /api/opd/doctor/call-next/
-    Calls the next patient in the waiting list:
-      1. If a previous token was 'called', auto-completes it.
-      2. Selects the highest priority next waiting patient.
-      3. Sets next token status to 'called'.
-      4. Updates Queue.current_token = next_token.token_number.
-      5. Broadcasts the current token update to all patients.
-    Optional payload: { "token_id": 5 } to specifically call a selected token.
-    """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request={'application/json': {'type': 'object', 'properties': {'token_id': {'type': 'integer'}}}}, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         user = request.user
         if not hasattr(user, 'doctor_profile'):
-            return Response(
-                {"detail": "Only doctors can call queue tokens."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"detail": "Only doctors can call queue tokens."}, status=status.HTTP_403_FORBIDDEN)
 
         doctor = user.doctor_profile
         today = timezone.now().date()
-
-        # Check if doctor specifically chose a token ID to call
         target_token_id = request.data.get('token_id')
-        next_token = None
 
         if target_token_id:
             next_token = Token.objects.filter(
@@ -290,37 +345,23 @@ class DoctorCallNextView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         else:
-            # Pick highest priority waiting token
             next_token = Token.objects.filter(
-                doctor=doctor,
-                appointment_date=today,
-                status='waiting'
-            ).annotate(
-                priority_rank=get_priority_order()
-            ).order_by('priority_rank', 'token_number').first()
+                doctor=doctor, appointment_date=today, status='waiting'
+            ).annotate(priority_rank=get_priority_order()).order_by('priority_rank', 'token_number').first()
 
         if not next_token:
-            return Response(
-                {"detail": "No patients currently waiting in queue."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": "No patients currently waiting in queue."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Auto-complete previously called token if doctor didn't explicitly complete it
         prev_called = Token.objects.filter(
-            doctor=doctor,
-            appointment_date=today,
-            status='called'
+            doctor=doctor, appointment_date=today, status='called'
         ).exclude(id=next_token.id).first()
-
         if prev_called:
             prev_called.status = 'completed'
             prev_called.save()
 
-        # Update next token to 'called'
         next_token.status = 'called'
         next_token.save()
 
-        # Update Queue.current_token (updates queue board for all patients!)
         queue, _ = Queue.objects.get_or_create(
             doctor=doctor,
             queue_date=today,
@@ -329,46 +370,48 @@ class DoctorCallNextView(APIView):
         queue.current_token = next_token.token_number
         queue.save()
 
+        sent_alerts = dispatch_queue_proximity_notifications(doctor, today)
+        record_audit_log(
+            request,
+            action='UPDATE',
+            resource_type='OPDCallNext',
+            resource_id=next_token.id,
+            patient=next_token.patient,
+            details=f"Called token {next_token.token_code}; dispatched {len(sent_alerts)} proximity alerts.",
+        )
+
         return Response({
             "message": f"Token {next_token.token_code} has been called into {doctor.room_number or 'the clinic'}!",
             "called_token": TokenSerializer(next_token).data,
             "current_token_number": queue.current_token,
+            "notifications_triggered": len(sent_alerts),
         }, status=status.HTTP_200_OK)
 
 
 class DoctorCompleteView(APIView):
-    """
-    POST /api/opd/doctor/complete/
-    Marks the currently called patient (or specified token) as 'completed'.
-    Payload (optional): { "token_id": 5 }
-    """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request={'application/json': {'type': 'object', 'properties': {'token_id': {'type': 'integer'}}}}, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         user = request.user
         if not hasattr(user, 'doctor_profile'):
-            return Response(
-                {"detail": "Only doctors can complete consultations."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"detail": "Only doctors can complete consultations."}, status=status.HTTP_403_FORBIDDEN)
 
         doctor = user.doctor_profile
         today = timezone.now().date()
-
         token_id = request.data.get('token_id')
+
         if token_id:
             token = Token.objects.filter(id=token_id, doctor=doctor).first()
         else:
             token = Token.objects.filter(doctor=doctor, appointment_date=today, status='called').first()
 
         if not token:
-            return Response(
-                {"detail": "No active called patient to complete."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": "No active called patient to complete."}, status=status.HTTP_400_BAD_REQUEST)
 
         token.status = 'completed'
         token.save()
+        dispatch_queue_proximity_notifications(doctor, today)
 
         return Response({
             "message": f"Consultation for Token {token.token_code} marked as completed.",
@@ -377,39 +420,29 @@ class DoctorCompleteView(APIView):
 
 
 class DoctorSkipView(APIView):
-    """
-    POST /api/opd/doctor/skip/
-    Marks the currently called patient (or specified token) as 'skipped'
-    when the patient is absent or not responding.
-    Payload (optional): { "token_id": 5 }
-    """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request={'application/json': {'type': 'object', 'properties': {'token_id': {'type': 'integer'}}}}, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         user = request.user
         if not hasattr(user, 'doctor_profile'):
-            return Response(
-                {"detail": "Only doctors can skip consultations."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"detail": "Only doctors can skip consultations."}, status=status.HTTP_403_FORBIDDEN)
 
         doctor = user.doctor_profile
         today = timezone.now().date()
-
         token_id = request.data.get('token_id')
+
         if token_id:
             token = Token.objects.filter(id=token_id, doctor=doctor).first()
         else:
             token = Token.objects.filter(doctor=doctor, appointment_date=today, status__in=['called', 'waiting']).first()
 
         if not token:
-            return Response(
-                {"detail": "No patient found to skip."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": "No patient found to skip."}, status=status.HTTP_400_BAD_REQUEST)
 
         token.status = 'skipped'
         token.save()
+        dispatch_queue_proximity_notifications(doctor, today)
 
         return Response({
             "message": f"Token {token.token_code} marked as skipped.",
@@ -418,22 +451,17 @@ class DoctorSkipView(APIView):
 
 
 # ─────────────────────────────────────────────
-# PUBLIC DISPLAY SCREEN (FOR TV MONITORS / WAITING LOUNGE)
+# CLINICAL TV DISPLAY QUEUE (ROLE-PROTECTED + ZERO PII)
 # ─────────────────────────────────────────────
-
 class PublicDisplayQueueView(APIView):
     """
     GET /api/opd/public/display/<int:doctor_id>/
-    Public endpoint for waiting lounge TV monitors.
-    Requires NO authentication.
-    Returns:
-      - Doctor details & Clinic Room
-      - Now Serving token (status='called')
-      - Next 5 waiting tokens in strict priority order
-      - Today's queue statistics
+    Requires Doctor / Reception / Admin authentication and omits all patient PII.
     """
-    permission_classes = [permissions.AllowAny]
 
+    permission_classes = [IsClinicalStaffOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request, doctor_id):
         doctor = get_object_or_404(
             Doctor.objects.select_related('user', 'department'),
@@ -452,20 +480,13 @@ class PublicDisplayQueueView(APIView):
         )
 
         all_today_tokens = Token.objects.filter(
-            doctor=doctor,
-            appointment_date=today
-        ).select_related('patient', 'patient__user', 'department')
+            doctor=doctor, appointment_date=today
+        ).select_related('doctor', 'department')
 
-        # Now Serving Token (called into room)
         now_serving = all_today_tokens.filter(status__in=['called', 'in_progress']).first()
-
-        # Next 5 Waiting Tokens (priority order: Emergency -> Senior Citizen -> Normal)
         next_5_tokens = all_today_tokens.filter(status='waiting').annotate(
             priority_rank=get_priority_order()
         ).order_by('priority_rank', 'token_number')[:5]
-
-        waiting_count = all_today_tokens.filter(status='waiting').count()
-        completed_count = all_today_tokens.filter(status='completed').count()
 
         return Response({
             "doctor": {
@@ -476,14 +497,62 @@ class PublicDisplayQueueView(APIView):
                 "avg_consult_minutes": doctor.avg_consult_minutes or 15,
                 "is_available": doctor.is_available,
             },
-            "now_serving": TokenSerializer(now_serving).data if now_serving else None,
-            "next_tokens": TokenSerializer(next_5_tokens, many=True).data,
+            "now_serving": PublicDisplayTokenSerializer(now_serving).data if now_serving else None,
+            "next_tokens": PublicDisplayTokenSerializer(next_5_tokens, many=True).data,
             "stats": {
                 "current_token_number": queue.current_token,
-                "waiting_count": waiting_count,
-                "completed_count": completed_count,
+                "waiting_count": all_today_tokens.filter(status='waiting').count(),
+                "completed_count": all_today_tokens.filter(status='completed').count(),
                 "total_today": all_today_tokens.count(),
             },
             "server_time": timezone.now().strftime("%H:%M:%S"),
             "server_date": today.strftime("%d %b %Y"),
         }, status=status.HTTP_200_OK)
+
+
+# ─────────────────────────────────────────────
+# NOTIFICATIONS ENDPOINTS (SMS / WhatsApp / In-App Queue Alerts)
+# ─────────────────────────────────────────────
+class MyNotificationsView(APIView):
+    """GET /api/opd/notifications/ -> Patient views own alerts; Admin/Reception views recent dispatches."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: NotificationSerializer(many=True)})
+    def get(self, request):
+        user = request.user
+        if user.role == 'patient':
+            if not hasattr(user, 'patient_profile'):
+                return Response([], status=status.HTTP_200_OK)
+            qs = Notification.objects.filter(patient=user.patient_profile).select_related('token')
+        elif user.role in ['admin', 'reception', 'doctor'] or user.is_staff:
+            qs = Notification.objects.all().select_related('token', 'patient__user')
+        else:
+            qs = Notification.objects.none()
+
+        channel = request.query_params.get('channel')
+        if channel:
+            qs = qs.filter(channel=channel)
+
+        return Response(NotificationSerializer(qs[:50], many=True).data, status=status.HTTP_200_OK)
+
+
+class NotificationMarkReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=None, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request, pk=None):
+        user = request.user
+        if not hasattr(user, 'patient_profile'):
+            return Response({'detail': 'No notifications for non-patient account.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pk:
+            notif = get_object_or_404(Notification, pk=pk)
+            if notif.patient_id != user.patient_profile.id:
+                return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+            notif.is_read = True
+            notif.save()
+        else:
+            Notification.objects.filter(patient=user.patient_profile, is_read=False).update(is_read=True)
+
+        return Response({'message': 'Marked as read.'}, status=status.HTTP_200_OK)

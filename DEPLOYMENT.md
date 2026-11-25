@@ -1,118 +1,79 @@
-# 🚀 SmartCare Hospital Management System — Deployment Guide
+# SmartCare HMS — Deployment & Operations Guide
 
-This guide walks you through deploying the **Django Backend on Render.com** and the **React Frontend on Cloudflare Pages** (both on 100% free tiers).
+> **Disclaimer:** Hosted demo instances use strictly synthetic fake data (`DEMO_MODE=True`) and intentionally disable live admin demo logins (`ALLOW_DEMO_ADMIN=False`). Never deploy with `DEMO_MODE=True` or weak passwords if handling real patient data.
+
+---
+
+## Live Production URLs
+
+- **Frontend (Cloudflare Pages):** https://smartcare-hospital-tyr.pages.dev
+- **Backend API (Render Web Service):** https://smartcare-backend-fsb1.onrender.com/api/
+- **Health Check Endpoint:** https://smartcare-backend-fsb1.onrender.com/api/health/
+- **Interactive Swagger Docs:** https://smartcare-backend-fsb1.onrender.com/api/docs/
 
 ---
 
 ## Architecture Overview
 
+1. **Frontend:** React + Vite + Tailwind CSS + Chart.js hosted globally on **Cloudflare Pages** (`wrangler.jsonc` / `frontend/dist`, hardened via `frontend/public/_headers`).
+2. **Backend:** Django 5.2 LTS + DRF + SimpleJWT + `drf-spectacular` + ReportLab hosted on **Render Web Services** (`render.yaml`).
+
+---
+
+## 1. Backend Deployment (Render.com)
+
+Configured cleanly in [`render.yaml`](./render.yaml):
+
+- **Root Directory:** `backend`
+- **Build Command:** `./build.sh` (installs requirements, runs `collectstatic`, runs migrations, seeds synthetic non-admin demo accounts only when `DEMO_MODE=True`, and automatically disables any lingering `admin / admin123` account when `ALLOW_DEMO_ADMIN=False`)
+- **Start Command:** `gunicorn smartcare.wsgi:application --bind 0.0.0.0:$PORT`
+- **Health Check Path:** `/api/health/`
+
+### Required Render Environment Variables
+
+| Key | Recommended Value | Purpose |
+| :--- | :--- | :--- |
+| `PYTHON_VERSION` | `3.11.9` | Python runtime on Render |
+| `SECRET_KEY` | Auto-generated 50+ char random string | Cryptographic signing (startup aborts if omitted with `DEBUG=False`) |
+| `DEBUG` | `False` | Disables stack trace exposure & dev previews |
+| `ALLOWED_HOSTS` | `.onrender.com,localhost,127.0.0.1` | Host header allowlist |
+| `FRONTEND_URL` | `https://smartcare-hospital-tyr.pages.dev` | Strict CORS allowlisted origin & password reset link base |
+| `DEMO_MODE` | `True` (sandbox) / `False` (real env) | Controls whether `build.sh` runs `seed_demo_data` |
+| `ALLOW_DEMO_ADMIN` | `False` | Ensures `admin / admin123` is **never** created or active on live deployments |
+| `DATABASE_URL` | PostgreSQL connection URI (optional) | Persistent production Postgres storage (recommended beyond free-tier sandbox) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Optional secrets | Enables real SMS/WhatsApp dispatch for `<= 3` queue proximity alerts |
+
+> **Render Free Tier Note:** Render free-tier web services sleep after 15 minutes of inactivity. The initial cold start takes ~45–60 seconds; the frontend monitors slow requests (>3.5s) and informs the user with `ColdStartBanner`.
+
+---
+
+## 2. Frontend Deployment (Cloudflare Pages)
+
+Configured via [`wrangler.jsonc`](./wrangler.jsonc) (`pages_build_output_dir: frontend/dist`):
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run build
+npx wrangler pages deploy dist --project-name smartcare-hospital
 ```
-                      ┌──────────────────────────────────────────────┐
-                      │              CLOUDFLARE PAGES                │
-                      │       React + Vite Frontend (SPA)            │
-                      │  URL: https://smartcare-hospital-tyr.pages.dev│
-                      └──────────────────────┬───────────────────────┘
-                                             │  HTTPS API Calls
-                                             ▼
-                      ┌──────────────────────────────────────────────┐
-                      │                 RENDER.COM                   │
-                      │       Django 4.2 REST API + Gunicorn         │
-                      │URL: https://smartcare-backend-fsb1.onrender.com│
-                      └──────────────────────┬───────────────────────┘
-                                             │  Database
-                                             ▼
-                      ┌──────────────────────────────────────────────┐
-                      │              DATABASE LAYER                  │
-                      │  SQLite / Managed Render PostgreSQL (Free)   │
-                      └──────────────────────────────────────────────┘
-```
+
+Production environment flags are checked into [`frontend/.env.production`](./frontend/.env.production):
+- `VITE_API_BASE_URL=https://smartcare-backend-fsb1.onrender.com/api`
+- `VITE_DEMO_MODE=true`
 
 ---
 
-## 🌐 Live Deployed Application
+## 3. Sandbox Accounts Reference (Live Demo)
 
-* **Frontend Web App (Cloudflare):** [https://smartcare-hospital-tyr.pages.dev](https://smartcare-hospital-tyr.pages.dev)
-* **Backend REST API (Render):** [https://smartcare-backend-fsb1.onrender.com/api/](https://smartcare-backend-fsb1.onrender.com/api/)
-* **GitHub Repository:** [https://github.com/WARRIORXR/smartcare-hospital-management](https://github.com/WARRIORXR/smartcare-hospital-management)
+Live demo environments expose **non-admin** roles only:
 
----
+| Role | Username | Password |
+| :--- | :--- | :--- |
+| **Patient** | `rahul.kumar` | `Patient@Demo26` |
+| **Doctor** | `dr.sharma` | `Doctor@Demo26` |
+| **Receptionist** | `reception.desk` | `Reception@Demo26` |
+| **Blood Bank Staff** | `bloodbank.staff` | `BloodBank@Demo26` |
 
-## Part 1: Deploy Backend on Render.com
-
-Render supports Python/Django natively and provisions a free PostgreSQL database.
-
-### Step 1: Sign Up / Log In
-1. Go to [https://render.com/](https://render.com/) and sign up or log in using your GitHub account (`WARRIORXR`).
-
-### Step 2: Deploy using Blueprint (One-Click)
-The repository contains a pre-configured [`render.yaml`](./render.yaml).
-
-1. In Render Dashboard, click **New +** (top right) $\rightarrow$ **Blueprint**.
-2. Select your repository: `WARRIORXR/smartcare-hospital-management`.
-3. Render will read `render.yaml` and show:
-   - **Service 1:** `smartcare-backend` (Python Web Service)
-   - **Service 2:** `smartcare-db` (PostgreSQL Database)
-4. Click **Apply**.
-5. Render will automatically:
-   - Provision the PostgreSQL database
-   - Run `build.sh` (installs deps, collects static files, runs migrations, seeds 5 doctors, 20 beds, blood stock, 10 donors)
-   - Start the Gunicorn web server
-
-### Step 3: Copy Your Backend URL
-Once deployed (status shows **Live**), copy your Render backend URL:
-`https://smartcare-backend-xxxx.onrender.com`
-
----
-
-## Part 2: Deploy Frontend on Cloudflare Pages
-
-Cloudflare Pages provides global ultra-fast static hosting with automated continuous deployment from GitHub.
-
-### Step 1: Sign Up / Log In
-1. Go to [https://dash.cloudflare.com/](https://dash.cloudflare.com/) and log in.
-2. In the left navigation, click **Workers & Pages** $\rightarrow$ **Overview**.
-3. Click **Create Application** $\rightarrow$ Select the **Pages** tab $\rightarrow$ Click **Connect to Git**.
-
-### Step 2: Select Repository
-1. Connect your GitHub account and select `WARRIORXR/smartcare-hospital-management`.
-2. Click **Begin setup**.
-
-### Step 3: Configure Build Settings
-Fill in the build configuration:
-
-| Setting | Value |
-|---|---|
-| **Project name** | `smartcare-hospital` (or your choice) |
-| **Production branch** | `main` |
-| **Framework preset** | `Vite` |
-| **Root directory** | `frontend` |
-| **Build command** | `npm run build` |
-| **Build output directory** | `dist` |
-
-### Step 4: Add Environment Variable
-Expand **Environment variables (advanced)** and click **Add variable**:
-
-| Variable Name | Value |
-|---|---|
-| `VITE_API_BASE_URL` | `https://your-backend-name.onrender.com/api` (the Render URL from Part 1 with `/api`) |
-
-### Step 5: Deploy
-Click **Save and Deploy**.
-Cloudflare will clone, build, and publish your frontend within 1-2 minutes.
-Your site will be live at:
-`https://smartcare-hospital.pages.dev`
-
----
-
-## Part 3: Verify the Connection
-
-1. Open your Cloudflare Pages URL in your browser.
-2. Log in with the pre-seeded credentials:
-   - **Admin / Receptionist:** `admin` / `admin123`
-   - **Doctor:** `dr.sharma` / `doctor123`
-   - **Patient:** `rahul.kumar` / `patient123`
-3. Test the workflows:
-   - OPD Token Booking & Calling
-   - Bed Assignment & Discharge
-   - Blood Bank Stock & Inpatient Requests
-   - Unified Medical Journey Modal
+To provision real Admin or Staff accounts in a fresh deployment without `ALLOW_DEMO_ADMIN`, run `python manage.py createsuperuser` via Render Shell and provision additional Receptionists, Doctors, or Blood Bank officers from `/admin/manage` -> **Staff Provisioning**.

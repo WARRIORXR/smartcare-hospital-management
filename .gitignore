@@ -45,7 +45,7 @@ yarn-error.log*
 Thumbs.db
 
 # =====================
-# Environment files
+# Environment files & Uploads
 # =====================
 .env
 .env.local
@@ -54,6 +54,10 @@ Thumbs.db
 .env.production.local
 backend/.env
 frontend/.env
+backend/media/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # wrangler files
 .wrangler

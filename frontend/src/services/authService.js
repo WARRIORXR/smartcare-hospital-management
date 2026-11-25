@@ -1,49 +1,47 @@
 /**
  * src/services/authService.js
  * ----------------------------
- * Handles authentication network calls (Login, Register, Profile).
+ * Handles authentication, logout blacklisting, password reset, and profile calls.
  */
 
 import api from './api';
 
 export const authService = {
-  /**
-   * Login user with username & password
-   * Returns: { access, refresh, user: { id, username, role, ... } }
-   */
   login: async (credentials) => {
     const response = await api.post('/accounts/login/', credentials);
     return response.data;
   },
 
-  /**
-   * Register a new user
-   * Returns: { message, access, refresh, user }
-   */
+  logout: async (refresh) => {
+    const response = await api.post('/accounts/logout/', { refresh });
+    return response.data;
+  },
+
   register: async (userData) => {
     const response = await api.post('/accounts/register/', userData);
     return response.data;
   },
 
-  /**
-   * Fetch current authenticated user's profile
-   */
+  requestPasswordReset: async (email) => {
+    const response = await api.post('/accounts/password-reset/', { email });
+    return response.data;
+  },
+
+  confirmPasswordReset: async (payload) => {
+    const response = await api.post('/accounts/password-reset/confirm/', payload);
+    return response.data;
+  },
+
   getProfile: async () => {
     const response = await api.get('/accounts/profile/');
     return response.data;
   },
 
-  /**
-   * Fetch list of active departments (for doctor registration)
-   */
   getDepartments: async () => {
     const response = await api.get('/accounts/departments/');
     return response.data;
   },
 
-  /**
-   * Refresh JWT token
-   */
   refreshToken: async (refresh) => {
     const response = await api.post('/auth/refresh/', { refresh });
     return response.data;

@@ -1,40 +1,47 @@
 /**
  * src/pages/doctor/DoctorDashboard.jsx
  * ------------------------------------
- * Interactive Unified Consultation Dashboard for Doctors (Step 13).
+ * Interactive Unified Consultation Dashboard for Doctors.
  *
- * Connects all 3 modules in one seamless patient journey:
- *  - Module 1: OPD Consultation & Live Token Queue
+ * Connects all 5 hospital modules in one seamless workflow:
+ *  - Module 1: OPD Consultation & Live 5s Token Queue + Duty / Leave Controls
  *  - Module 2: Inpatient Bed Admission (Auto-Assigns Bed) & Discharge
- *  - Module 3: Blood Bank Unit Request (with Urgency: Normal/Urgent/Emergency & Matching Donors)
- *  - Unified Patient Journey Timeline Modal (linked via Patient ID)
+ *  - Module 3: Blood Bank Unit Request & Donor Matching
+ *  - Module 4: Prescriptions, Visit Notes & Lab Records Shortcut
+ *  - Unified Patient Journey Timeline Modal (Modules 1-5)
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import opdService from '../../services/opdService';
 import bedService from '../../services/bedService';
 import bloodBankService from '../../services/bloodBankService';
 import hospitalService from '../../services/hospitalService';
+import PatientJourneyModal from '../../components/common/PatientJourneyModal';
 
 const DoctorDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
-
-  // Defensive Guard: Only Doctors can access Doctor Queue Dashboard
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || user.role !== 'doctor') {
-    return <Navigate to="/dashboard" replace />;
-  }
+  const { t } = useLanguage();
+  const navigate = useNavigate();
 
   // Queue Data
   const [queueData, setQueueData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [togglingDuty, setTogglingDuty] = useState(false);
   const [alert, setAlert] = useState({ type: '', message: '' });
   const [activeTab, setActiveTab] = useState('waiting'); // 'waiting' | 'completed' | 'skipped' | 'admitted'
+
+  // Availability & Leaves State
+  const [leaves, setLeaves] = useState([]);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    start_date: new Date().toISOString().split('T')[0],
+    end_date: new Date().toISOString().split('T')[0],
+    reason: '',
+  });
 
   // Admitted Inpatients Data & Bed Overview
   const [admittedList, setAdmittedList] = useState([]);
@@ -68,12 +75,15 @@ const DoctorDashboard = () => {
     notes: '',
   });
 
-  // 4. Patient Journey Timeline Modal State
-  const [showJourneyModal, setShowJourneyModal] = useState(false);
-  const [journeyLoading, setJourneyLoading] = useState(false);
-  const [journeyData, setJourneyData] = useState(null);
+  // 4. Unified Patient Journey Modal State (Modules 1-5)
+  const [journeyPatientId, setJourneyPatientId] = useState(null);
 
-  // Load Queue, Active Admissions, and Live Blood Stock
+  const showAlert = (type, message) => {
+    setAlert({ type, message });
+    setTimeout(() => setAlert({ type: '', message: '' }), 5000);
+  };
+
+  // Load Queue, Active Admissions, Live Blood Stock, and Leaves
   const loadQueue = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
@@ -89,14 +99,16 @@ const DoctorDashboard = () => {
 
   const loadHospitalData = useCallback(async () => {
     try {
-      const [admissionsData, overviewData, stockData] = await Promise.all([
+      const [admissionsData, overviewData, stockData, leavesData] = await Promise.all([
         bedService.getActiveAdmissions({ my_patients: true }),
         bedService.getOverview().catch(() => null),
         bloodBankService.getLiveStock().catch(() => null),
+        hospitalService.getLeaves().catch(() => []),
       ]);
 
       setAdmittedList(admissionsData || []);
       setBedOverview(overviewData);
+      setLeaves(Array.isArray(leavesData) ? leavesData : leavesData?.results || []);
 
       if (stockData?.stock) {
         const stockMap = {};
@@ -111,20 +123,68 @@ const DoctorDashboard = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated || !user || user.role !== 'doctor') return;
     loadQueue();
     loadHospitalData();
 
-    // Auto-refresh queue and data every 15 seconds
+    // Auto-refresh live queue and hospital state every 5 seconds
     const interval = setInterval(() => {
       loadQueue(true);
       loadHospitalData();
-    }, 15000);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [loadQueue, loadHospitalData]);
+  }, [isAuthenticated, user, loadQueue, loadHospitalData]);
 
-  const showAlert = (type, message) => {
-    setAlert({ type, message });
-    setTimeout(() => setAlert({ type: '', message: '' }), 5000);
+  // Defensive Guard: Only Doctors can access Doctor Queue Dashboard
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthenticated || !user || user.role !== 'doctor') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Duty Status & Leave Handlers
+  const handleToggleAvailability = async () => {
+    try {
+      setTogglingDuty(true);
+      const nextStatus = !(queueData?.doctor?.is_available ?? true);
+      const res = await hospitalService.toggleDoctorAvailability({ is_available: nextStatus });
+      showAlert('success', res.message || `Duty status updated to ${nextStatus ? 'On Duty' : 'Off Duty'}.`);
+      await loadQueue(true);
+    } catch (err) {
+      showAlert('error', err.response?.data?.detail || 'Could not toggle availability status.');
+    } finally {
+      setTogglingDuty(false);
+    }
+  };
+
+  const handleCreateLeave = async (e) => {
+    e.preventDefault();
+    try {
+      setActionLoading(true);
+      await hospitalService.createLeave(leaveForm);
+      showAlert('success', `Leave scheduled (${leaveForm.start_date} to ${leaveForm.end_date}).`);
+      setLeaveForm({
+        start_date: new Date().toISOString().split('T')[0],
+        end_date: new Date().toISOString().split('T')[0],
+        reason: '',
+      });
+      await loadHospitalData();
+    } catch (err) {
+      showAlert('error', err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || 'Failed to schedule leave.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteLeave = async (leaveId) => {
+    try {
+      await hospitalService.deleteLeave(leaveId);
+      showAlert('success', 'Leave cancelled.');
+      await loadHospitalData();
+    } catch (err) {
+      showAlert('error', err.response?.data?.detail || 'Failed to cancel leave.');
+    }
   };
 
   // ─── ACTION HANDLERS ───
@@ -318,23 +378,12 @@ const DoctorDashboard = () => {
   };
 
   // ─── 4. UNIFIED PATIENT JOURNEY TIMELINE (LINKED VIA PATIENT ID) ───
-  const handleOpenJourneyModal = async (patientId) => {
+  const handleOpenJourneyModal = (patientId) => {
     if (!patientId) {
-      alert('Patient ID not available for this record.');
+      showAlert('error', 'Patient ID not available for this record.');
       return;
     }
-    try {
-      setJourneyLoading(true);
-      setShowJourneyModal(true);
-      const data = await hospitalService.getPatientJourney(patientId);
-      setJourneyData(data);
-    } catch (err) {
-      console.error('Failed to load patient journey:', err);
-      alert('Could not retrieve unified patient journey.');
-      setShowJourneyModal(false);
-    } finally {
-      setJourneyLoading(false);
-    }
+    setJourneyPatientId(patientId);
   };
 
   const getPriorityBadge = (priority) => {
@@ -390,8 +439,23 @@ const DoctorDashboard = () => {
       {/* Header Profile Banner */}
       <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-indigo-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-xs mb-3">
-            👨‍⚕️ Clinical Consultation Room • Integrated HMS
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-xs">
+              👨‍⚕️ {t('doctorPortal')}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 border border-white/20 text-blue-100">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              {t('liveQueueActive')}
+            </span>
+            <span
+              className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                queueData?.doctor?.is_available ?? true
+                  ? 'bg-emerald-500/25 text-emerald-100 border border-emerald-400/40'
+                  : 'bg-rose-500/30 text-rose-100 border border-rose-300/40'
+              }`}
+            >
+              {(queueData?.doctor?.is_available ?? true) ? '● On Duty' : '● Off Duty'}
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
             Dr. {user?.first_name ? `${user.first_name} ${user.last_name}` : user?.username}
@@ -403,16 +467,47 @@ const DoctorDashboard = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
+            type="button"
+            onClick={handleToggleAvailability}
+            disabled={togglingDuty}
+            className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs font-bold transition border shadow-2xs ${
+              queueData?.doctor?.is_available ?? true
+                ? 'bg-emerald-500/25 hover:bg-emerald-500/35 text-white border-emerald-300/40'
+                : 'bg-rose-500/35 hover:bg-rose-500/45 text-white border-rose-300/40'
+            }`}
+          >
+            {togglingDuty
+              ? 'Updating...'
+              : (queueData?.doctor?.is_available ?? true)
+              ? '🟢 On Duty (Switch Off)'
+              : '🔴 Off Duty (Go On Duty)'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowLeaveModal(true)}
+            className="inline-flex items-center px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/20 shadow-2xs"
+          >
+            📅 Leave ({leaves.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/records')}
+            className="inline-flex items-center px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition shadow-xs"
+          >
+            🩺 + Clinical Rx / Notes
+          </button>
+          <button
+            type="button"
             onClick={() => {
               loadQueue();
               loadHospitalData();
             }}
             disabled={actionLoading}
-            className="inline-flex items-center px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/20 shadow-2xs"
+            className="inline-flex items-center px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/20 shadow-2xs"
           >
-            🔄 Refresh Queue
+            🔄 Refresh
           </button>
         </div>
       </div>
@@ -520,6 +615,15 @@ const DoctorDashboard = () => {
                 >
                   <span>📜</span>
                   <span>View Patient Journey Timeline</span>
+                </button>
+
+                {/* Module 4 Connection: Write Rx / Clinical Note / Upload Lab */}
+                <button
+                  onClick={() => navigate('/records')}
+                  className="w-full py-2 px-4 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition text-center flex items-center justify-center gap-1"
+                >
+                  <span>🩺</span>
+                  <span>+ Add Clinical Record / Rx</span>
                 </button>
 
                 {/* Call Next & Skip */}
@@ -1291,209 +1395,108 @@ const DoctorDashboard = () => {
         </div>
       )}
 
-      {/* ─── MODAL 4: UNIFIED PATIENT JOURNEY TIMELINE (STEP 13 SHOWPIECE) ─── */}
-      {showJourneyModal && (
+      {/* ─── MODAL 4: UNIFIED PATIENT JOURNEY TIMELINE (MODULES 1-5) ─── */}
+      <PatientJourneyModal
+        isOpen={Boolean(journeyPatientId)}
+        onClose={() => setJourneyPatientId(null)}
+        patientId={journeyPatientId}
+      />
+
+      {/* ─── MODAL 5: DOCTOR LEAVE SCHEDULE ─── */}
+      {showLeaveModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl animate-scaleUp max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-xs">
-                  📜
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-gray-900">
-                    Unified Patient Journey Timeline
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Connected across OPD Consultation → Bed Management → Blood Bank
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-lg font-black text-gray-900">📅 Manage Availability & Leaves</h3>
+                <p className="text-xs text-gray-500">
+                  Patients booking advance OPD tokens are blocked on your scheduled leave dates.
+                </p>
               </div>
               <button
-                onClick={() => setShowJourneyModal(false)}
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
                 className="text-gray-400 hover:text-gray-600 font-bold text-lg"
               >
                 ✕
               </button>
             </div>
 
-            {journeyLoading ? (
-              <div className="py-20 text-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto"></div>
-                <p className="mt-3 text-xs text-gray-500 font-semibold">
-                  Connecting patient medical records across modules...
-                </p>
+            <form onSubmit={handleCreateLeave} className="mt-4 space-y-3 bg-gray-50 p-4 rounded-2xl border border-gray-200">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.start_date}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    required
+                    min={leaveForm.start_date}
+                    value={leaveForm.end_date}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs bg-white"
+                  />
+                </div>
               </div>
-            ) : !journeyData ? (
-              <div className="py-12 text-center text-gray-500">No records found.</div>
-            ) : (
-              <div className="mt-6 space-y-6">
-                {/* Patient Header Card */}
-                <div className="p-4 bg-gradient-to-r from-indigo-50/80 via-blue-50/50 to-white rounded-2xl border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] uppercase font-mono font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
-                      Patient ID: {journeyData.patient.patient_code}
-                    </span>
-                    <h4 className="text-xl font-extrabold text-gray-900 mt-1">
-                      {journeyData.patient.name}
-                    </h4>
-                    <p className="text-xs text-gray-600">
-                      Blood Group: <strong className="text-red-600">{journeyData.patient.blood_group}</strong> • Gender: {journeyData.patient.gender} • Phone: {journeyData.patient.phone}
-                    </p>
-                  </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">Reason / Coverage Note</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Medical Conference / Planned Leave"
+                  value={leaveForm.reason}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs bg-white"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition disabled:opacity-50"
+              >
+                {actionLoading ? 'Saving Leave...' : '+ Add Leave Window'}
+              </button>
+            </form>
 
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 font-bold">
-                      🎟️ {journeyData.journey_summary.total_opd_visits} OPD Visits
-                    </span>
-                    <span
-                      className={`px-2.5 py-1 rounded-lg font-bold ${
-                        journeyData.journey_summary.is_currently_admitted
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
+            <div className="mt-5">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                Scheduled Leaves ({leaves.length})
+              </h4>
+              {leaves.length === 0 ? (
+                <p className="text-xs text-gray-400 italic py-4 text-center">No scheduled leaves.</p>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {leaves.map((lv) => (
+                    <div
+                      key={lv.id}
+                      className="p-3 rounded-xl border border-gray-200 bg-white flex items-center justify-between gap-2 text-xs"
                     >
-                      🛏️ {journeyData.journey_summary.is_currently_admitted ? `Bed ${journeyData.journey_summary.current_bed}` : 'Not Admitted'}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 font-bold">
-                      🩸 {journeyData.journey_summary.total_blood_requests} Blood Reqs
-                    </span>
-                  </div>
-                </div>
-
-                {/* ── 3-STEP JOURNEY TIMELINE ── */}
-                <div className="relative border-l-2 border-indigo-200 ml-4 space-y-6 pl-6">
-                  {/* STEP 1: OPD CONSULTATION */}
-                  <div className="relative">
-                    <span className="absolute -left-[31px] top-1.5 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                      1
-                    </span>
-                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">
-                          Module 1: OPD Consultation
-                        </span>
-                        <span className="text-2xs text-gray-400">
-                          {journeyData.module_1_opd?.[0]?.appointment_date || 'Today'}
-                        </span>
-                      </div>
-
-                      {journeyData.module_1_opd?.length > 0 ? (
-                        <div className="mt-2 space-y-1.5">
-                          {journeyData.module_1_opd.slice(0, 2).map((t) => (
-                            <div key={t.id} className="text-xs text-gray-700">
-                              <span className="font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                                {t.token_code}
-                              </span>{' '}
-                              Consulted with <strong>{t.doctor_name}</strong> ({t.department_name})
-                              <p className="text-gray-500 mt-0.5">
-                                Symptoms: "{t.symptoms || 'General Checkup'}" • Priority: {t.priority}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 mt-1">No OPD tokens found.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* STEP 2: BED ADMISSION */}
-                  <div className="relative">
-                    <span className="absolute -left-[31px] top-1.5 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                      2
-                    </span>
-                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                          Module 2: Inpatient Bed Allocation
-                        </span>
-                        {journeyData.module_2_beds?.active_admission && (
-                          <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-2xs font-black">
-                            Currently Inpatient
-                          </span>
-                        )}
-                      </div>
-
-                      {journeyData.module_2_beds?.active_admission ? (
-                        <div className="mt-2 text-xs space-y-1">
-                          <p className="font-bold text-gray-900">
-                            Assigned Bed: {journeyData.module_2_beds.active_admission.bed_number} in{' '}
-                            {journeyData.module_2_beds.active_admission.ward_name} (Floor{' '}
-                            {journeyData.module_2_beds.active_admission.floor_number})
-                          </p>
-                          <p className="text-gray-600">
-                            Diagnosis: "{journeyData.module_2_beds.active_admission.diagnosis}"
-                          </p>
-                          <p className="text-gray-500 text-2xs">
-                            Attending: {journeyData.module_2_beds.active_admission.attending_doctor_name} • Admitted: {new Date(journeyData.module_2_beds.active_admission.admission_date).toLocaleString()}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Patient is outpatient (not currently admitted to an inpatient bed).
+                      <div>
+                        <p className="font-bold text-gray-900">
+                          {lv.start_date} &rarr; {lv.end_date}
                         </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* STEP 3: BLOOD BANK */}
-                  <div className="relative">
-                    <span className="absolute -left-[31px] top-1.5 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                      3
-                    </span>
-                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">
-                          Module 3: Blood Bank Requests
-                        </span>
-                        <span className="text-2xs text-gray-400">
-                          {journeyData.module_3_bloodbank?.length || 0} Request(s)
-                        </span>
+                        <p className="text-gray-500 text-[11px]">{lv.reason || 'Planned Leave'}</p>
                       </div>
-
-                      {journeyData.module_3_bloodbank?.length > 0 ? (
-                        <div className="mt-2 space-y-2">
-                          {journeyData.module_3_bloodbank.map((br) => (
-                            <div
-                              key={br.id}
-                              className="p-2.5 bg-rose-50/60 rounded-xl border border-rose-200 text-xs flex items-center justify-between"
-                            >
-                              <div>
-                                <span className="font-black text-rose-800">
-                                  {br.blood_group} x{br.units_required} Unit(s)
-                                </span>{' '}
-                                • Urgency:{' '}
-                                <strong className="uppercase text-rose-900">{br.priority}</strong>
-                                <p className="text-gray-600 text-2xs mt-0.5">
-                                  Purpose: {br.purpose} • Status: {br.status}
-                                </p>
-                              </div>
-                              <span className="px-2 py-0.5 rounded-full bg-white text-rose-700 font-bold text-2xs border border-rose-200">
-                                {br.status}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500 mt-1">
-                          No blood units requested for this patient yet.
-                        </p>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteLeave(lv.id)}
+                        className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-semibold text-[11px] transition"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  </div>
+                  ))}
                 </div>
-
-                <div className="pt-4 border-t border-gray-100 flex justify-end">
-                  <button
-                    onClick={() => setShowJourneyModal(false)}
-                    className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

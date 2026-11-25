@@ -18,13 +18,7 @@ const BookTokenPage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Defensive Guard: Only Patients can book tokens
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || user.role !== 'patient') {
-    return <Navigate to="/dashboard" replace />;
-  }
+  const isPatient = Boolean(isAuthenticated && user && user.role === 'patient');
 
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -37,6 +31,7 @@ const BookTokenPage = () => {
 
   // Load departments and available doctors
   useEffect(() => {
+    if (!isPatient) return;
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -53,7 +48,15 @@ const BookTokenPage = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [isPatient]);
+
+  // Defensive Guard: Only Patients can book tokens
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isPatient) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Filter doctors by selected department & search term
   const filteredDoctors = doctors.filter((doc) => {

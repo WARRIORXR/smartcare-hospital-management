@@ -19,10 +19,14 @@ services:
         generateValue: true
       - key: DEBUG
         value: "False"
+      - key: DEMO_MODE
+        value: "True"
+      - key: ALLOW_DEMO_ADMIN
+        value: "False"
       - key: ALLOWED_HOSTS
         value: ".onrender.com"
       - key: FRONTEND_URL
-        value: "https://smartcare-hospital.pages.dev"
+        value: "https://smartcare-hospital-tyr.pages.dev"
       - key: DB_ENGINE
         value: "sqlite"
       - key: PYTHON_VERSION

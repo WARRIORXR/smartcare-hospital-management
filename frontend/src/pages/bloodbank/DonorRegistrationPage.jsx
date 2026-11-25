@@ -20,13 +20,9 @@ const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 const DonorRegistrationPage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
-  // Defensive Guard: Only Admin, Doctor, and Blood Bank Staff can manage/view donors
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || !['admin', 'doctor', 'bloodbank_staff'].includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  const isAuthorizedBloodStaff = Boolean(
+    isAuthenticated && user && ['admin', 'doctor', 'bloodbank_staff'].includes(user.role)
+  );
 
   const [donors, setDonors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -70,8 +66,17 @@ const DonorRegistrationPage = () => {
   }, [selectedGroup, cityFilter]);
 
   useEffect(() => {
+    if (!isAuthorizedBloodStaff) return;
     fetchDonors();
-  }, [fetchDonors]);
+  }, [isAuthorizedBloodStaff, fetchDonors]);
+
+  // Defensive Guard: Only Admin, Doctor, and Blood Bank Staff can manage/view donors
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthorizedBloodStaff) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Submit Donor Registration
   const handleSubmit = async (e) => {

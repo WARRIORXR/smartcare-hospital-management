@@ -38,17 +38,13 @@ const WARD_TYPE_LABELS = {
 const BedManagementDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
-  // Defensive Guard: Only Admin and Doctor can manage beds
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || !['admin', 'doctor'].includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  const isAuthorizedBedStaff = Boolean(
+    isAuthenticated && user && ['admin', 'doctor', 'reception'].includes(user.role)
+  );
   const isAdmin = user?.role === 'admin' || user?.is_staff;
   const isDoctor = user?.role === 'doctor';
-  const canAdmit = isAdmin || isDoctor;
+  const isReception = user?.role === 'reception';
+  const canAdmit = isAdmin || isDoctor || isReception;
 
   // Data states
   const [loading, setLoading] = useState(true);
@@ -66,7 +62,7 @@ const BedManagementDashboard = () => {
   });
   const [wards, setWards] = useState([]);
   const [activeAdmissions, setActiveAdmissions] = useState([]);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [viewTab, setViewTab] = useState('grid'); // 'grid' | 'admissions'
 
   // Filter states
@@ -155,17 +151,18 @@ const BedManagementDashboard = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthorizedBedStaff) return;
     fetchOverview();
-  }, [fetchOverview]);
+  }, [isAuthorizedBedStaff, fetchOverview]);
 
-  // Auto-refresh interval
+  // Auto-refresh interval (every 5s live sync)
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!isAuthorizedBedStaff || !autoRefresh) return;
     const interval = setInterval(() => {
       fetchOverview(true);
     }, 5000);
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchOverview]);
+  }, [isAuthorizedBedStaff, autoRefresh, fetchOverview]);
 
   // Auto-dismiss success notification
   useEffect(() => {
@@ -174,6 +171,14 @@ const BedManagementDashboard = () => {
       return () => clearTimeout(timer);
     }
   }, [successMsg]);
+
+  // Defensive Guard: Only Admin, Doctor, and Receptionist can manage beds
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthorizedBedStaff) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Handle Quick Status Change
   const handleStatusChange = async (bedId, newStatus) => {

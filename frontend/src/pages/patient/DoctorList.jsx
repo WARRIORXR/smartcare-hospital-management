@@ -15,13 +15,7 @@ const DoctorList = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Defensive Guard: Only Patients can access
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || user.role !== 'patient') {
-    return <Navigate to="/dashboard" replace />;
-  }
+  const isPatient = Boolean(isAuthenticated && user && user.role === 'patient');
 
   const [doctors, setDoctors] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -34,6 +28,7 @@ const DoctorList = () => {
   const [onlyAvailable, setOnlyAvailable] = useState(false);
 
   useEffect(() => {
+    if (!isPatient) return;
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -50,7 +45,15 @@ const DoctorList = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [isPatient]);
+
+  // Defensive Guard: Only Patients can access
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isPatient) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   // Filter doctors locally for instant search response
   const filteredDoctors = doctors.filter((doc) => {
@@ -186,6 +189,18 @@ const DoctorList = () => {
                 <p className="text-xs font-medium text-gray-500 mt-0.5">
                   {doc.specialization} • {doc.qualification || 'MBBS'}
                 </p>
+
+                {/* Rating & Leave Summary */}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold">
+                    ⭐ {doc.average_rating !== null && doc.average_rating !== undefined ? `${doc.average_rating}/5` : 'New'} ({doc.feedback_count || 0} reviews)
+                  </span>
+                  {Array.isArray(doc.upcoming_leaves) && doc.upcoming_leaves.length > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-semibold">
+                      Leave: {doc.upcoming_leaves[0].start_date}
+                    </span>
+                  )}
+                </div>
 
                 {/* Info Cards: Room, Time, Fee */}
                 <div className="grid grid-cols-3 gap-2 mt-5 p-3 bg-gray-50 rounded-xl border border-gray-100 text-center">

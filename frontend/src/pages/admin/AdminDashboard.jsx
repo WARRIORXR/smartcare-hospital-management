@@ -16,6 +16,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import hospitalService from '../../services/hospitalService';
 
 // Chart.js & react-chartjs-2 registration
@@ -49,27 +50,29 @@ ChartJS.register(
 
 const AdminDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
-  // Defensive Guard: Only Admin can access
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
-  }
-  if (!isAuthenticated || !user || (user.role !== 'admin' && !user.is_staff)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   const [analytics, setAnalytics] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [exportingFormat, setExportingFormat] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
 
+  const isAuthorizedAdmin = Boolean(isAuthenticated && user && (user.role === 'admin' || user.is_staff));
+
   const fetchAnalytics = useCallback(async () => {
     try {
       setError(null);
-      const data = await hospitalService.getAdminAnalytics();
+      const [data, logsData] = await Promise.all([
+        hospitalService.getAdminAnalytics(),
+        hospitalService.getAuditLogs().catch(() => []),
+      ]);
       setAnalytics(data);
+      setAuditLogs(Array.isArray(logsData) ? logsData : logsData?.results || []);
       setLastRefreshed(new Date());
     } catch (err) {
       console.error('Failed to load admin analytics', err);
@@ -80,17 +83,60 @@ const AdminDashboard = () => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthorizedAdmin) return;
     fetchAnalytics();
-  }, [fetchAnalytics]);
+  }, [isAuthorizedAdmin, fetchAnalytics]);
 
   // Periodic Auto-Refresh every 15 seconds
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!isAuthorizedAdmin || !autoRefresh) return;
     const interval = setInterval(() => {
       fetchAnalytics();
     }, 15000);
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchAnalytics]);
+  }, [isAuthorizedAdmin, autoRefresh, fetchAnalytics]);
+
+  // Defensive Guard: Only Admin can access
+  if (authLoading) {
+    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  }
+  if (!isAuthorizedAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const handleExportCsv = async () => {
+    try {
+      setExportingFormat('csv');
+      await hospitalService.downloadAnalyticsCsv();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to export CSV report.');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingFormat('pdf');
+      await hospitalService.downloadAnalyticsPdf();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to export PDF report.');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    if (!auditSearch.trim()) return true;
+    const q = auditSearch.toLowerCase();
+    return (
+      (log.actor_username || '').toLowerCase().includes(q) ||
+      (log.action || '').toLowerCase().includes(q) ||
+      (log.resource_type || '').toLowerCase().includes(q) ||
+      (log.patient_code || '').toLowerCase().includes(q) ||
+      (log.details || '').toLowerCase().includes(q)
+    );
+  });
 
   const kpis = analytics?.summary_kpis;
   const charts = analytics?.charts;
@@ -299,7 +345,23 @@ const AdminDashboard = () => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={exportingFormat === 'csv'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition disabled:opacity-60"
+            >
+              <span>📊</span> {exportingFormat === 'csv' ? 'Exporting...' : t('exportCsv')}
+            </button>
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exportingFormat === 'pdf'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-sm transition disabled:opacity-60"
+            >
+              <span>📄</span> {exportingFormat === 'pdf' ? 'Exporting...' : t('exportPdf')}
+            </button>
             <button
               onClick={() => fetchAnalytics()}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-700/60 hover:bg-purple-600 text-white text-xs font-bold border border-purple-500/40 shadow-sm transition"
@@ -659,6 +721,91 @@ const AdminDashboard = () => {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* ───────────────────────────────────────────────────────────── */}
+          {/* Security & Clinical Access Audit Log */}
+          {/* ───────────────────────────────────────────────────────────── */}
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <span>🛡️</span> {t('auditLogTitle')}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Tracks who viewed or modified patient medical records, admissions, billing, and blood requests.
+                </p>
+              </div>
+              <input
+                type="text"
+                placeholder="Filter by user, action, resource, PAT-ID..."
+                value={auditSearch}
+                onChange={(e) => setAuditSearch(e.target.value)}
+                className="px-3.5 py-2 rounded-xl border border-gray-300 text-xs w-full sm:w-72 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+            </div>
+
+            {filteredAuditLogs.length === 0 ? (
+              <p className="text-xs text-gray-400 italic py-6 text-center">No matching audit log events recorded yet.</p>
+            ) : (
+              <div className="overflow-x-auto max-h-80 overflow-y-auto border border-gray-100 rounded-xl">
+                <table className="min-w-full text-left text-xs divide-y divide-gray-200">
+                  <thead className="bg-gray-50 text-gray-600 uppercase font-semibold sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2.5">Timestamp</th>
+                      <th className="px-4 py-2.5">Actor</th>
+                      <th className="px-4 py-2.5">Action</th>
+                      <th className="px-4 py-2.5">Resource</th>
+                      <th className="px-4 py-2.5">Patient</th>
+                      <th className="px-4 py-2.5">IP</th>
+                      <th className="px-4 py-2.5">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {filteredAuditLogs.slice(0, 40).map((log) => (
+                      <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 whitespace-nowrap text-gray-500 font-mono text-[11px]">
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <span className="font-bold text-gray-900">@{log.actor_username || 'system'}</span>{' '}
+                          <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                            {log.actor_role || '-'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              log.action === 'VIEW'
+                                ? 'bg-blue-50 text-blue-700'
+                                : log.action === 'CREATE'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : log.action === 'DOWNLOAD'
+                                ? 'bg-amber-50 text-amber-800'
+                                : 'bg-purple-50 text-purple-700'
+                            }`}
+                          >
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap font-medium text-gray-800">
+                          {log.resource_type} {log.resource_id ? `#${log.resource_id}` : ''}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap font-mono text-indigo-700 font-bold">
+                          {log.patient_code || '-'}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap font-mono text-gray-500">
+                          {log.ip_address || '-'}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600 max-w-xs truncate" title={log.details}>
+                          {log.details}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}

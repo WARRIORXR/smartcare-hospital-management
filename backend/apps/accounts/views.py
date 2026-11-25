@@ -1,72 +1,141 @@
 """
 apps/accounts/views.py
 =======================
-API Views for User authentication, profiles, and Admin management
-of Departments and Doctors.
-
-Endpoints:
-  - POST /api/accounts/login/            -> JWT login
-  - POST /api/accounts/register/         -> User registration
-  - GET  /api/accounts/profile/          -> Current user profile
-  - GET, POST /api/accounts/departments/ -> List / Admin Add department
-  - GET, PUT, DELETE /api/accounts/departments/<id>/ -> Admin Edit/Delete department
-  - GET, POST /api/accounts/doctors/     -> List doctors / Admin Add doctor
-  - GET, PUT, DELETE /api/accounts/doctors/<id>/     -> Admin Edit/Delete doctor
+API Views for User authentication, refresh logout, password reset,
+profiles, admin management, leave/feedback, audit logs, and analytics exports.
 """
 
-from rest_framework import status, generics, permissions, filters
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import User, Patient, Doctor, Department
+from .audit import record_audit_log
+from .models import AuditLog, Department, Doctor, DoctorFeedback, DoctorLeave, Patient, User
+from .reports import (
+    build_analytics_csv_response,
+    build_analytics_pdf_response,
+    compute_analytics_data,
+)
 from .serializers import (
+    AdminStaffCreateSerializer,
+    AuditLogSerializer,
     CustomTokenObtainPairSerializer,
-    RegisterSerializer,
-    UserSerializer,
-    PatientProfileSerializer,
-    DoctorProfileSerializer,
     DepartmentSerializer,
     DoctorDetailSerializer,
+    DoctorFeedbackSerializer,
+    DoctorLeaveSerializer,
     DoctorManageSerializer,
+    DoctorProfileSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    PatientProfileSerializer,
+    RegisterSerializer,
+    UserSerializer,
 )
 
 
 # ─────────────────────────────────────────────
-# Custom Permission: Admin Only for Writes
+# Custom Permissions
 # ─────────────────────────────────────────────
-class IsAdminOrReadOnly(permissions.BasePermission):
-    """
-    Allows read-only access (GET, HEAD, OPTIONS) to any user,
-    but restricts write access (POST, PUT, PATCH, DELETE) to Admins.
-    """
+class IsAdminOnly(permissions.BasePermission):
+    """Restricts access exclusively to Administrators."""
+
     def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return True
         return bool(
-            request.user and
-            request.user.is_authenticated and
-            (request.user.role == 'admin' or request.user.is_staff)
+            request.user
+            and request.user.is_authenticated
+            and (request.user.role == 'admin' or request.user.is_staff or request.user.is_superuser)
         )
 
 
+class IsAdminOrReadOnly(permissions.BasePermission):
+    """
+    Requires authentication for read methods;
+    restricts write access (POST, PUT, PATCH, DELETE) to Admins.
+    """
+
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(request.user.role == 'admin' or request.user.is_staff or request.user.is_superuser)
+
+
 # ─────────────────────────────────────────────
-# 1. JWT Login View
+# 1. Auth Views (Login, Logout, Register, Password Reset)
 # ─────────────────────────────────────────────
 class CustomLoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     permission_classes = [AllowAny]
+    throttle_scope = 'login'
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        attempted_username = str(request.data.get('username', '')).strip()[:150]
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            record_audit_log(
+                request,
+                action='LOGIN_FAILED',
+                resource_type='AuthSession',
+                actor_username=attempted_username or 'unknown',
+                actor_role='anonymous',
+                details='Invalid login credentials or blocked demo admin attempt.',
+            )
+            raise
+
+        user_info = serializer.validated_data.get('user', {})
+        record_audit_log(
+            request,
+            action='LOGIN',
+            resource_type='AuthSession',
+            resource_id=user_info.get('id', ''),
+            actor_username=user_info.get('username', attempted_username),
+            actor_role=user_info.get('role', ''),
+            details='User authenticated via JWT.',
+        )
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
-# ─────────────────────────────────────────────
-# 2. User Registration View
-# ─────────────────────────────────────────────
+class LogoutView(APIView):
+    """Blacklist the submitted refresh token so sessions cannot be reused after logout."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request={'application/json': {'type': 'object', 'properties': {'refresh': {'type': 'string'}}}}, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except (TokenError, InvalidToken):
+                return Response({'detail': 'Invalid refresh token.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': 'Logged out cleanly.'}, status=status.HTTP_200_OK)
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = 'register'
+    serializer_class = RegisterSerializer
 
+    @extend_schema(request=RegisterSerializer, responses={201: UserSerializer})
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
@@ -78,29 +147,126 @@ class RegisterView(APIView):
             refresh['name'] = user.get_full_name() or user.username
             refresh['email'] = user.email
 
-            user_data = UserSerializer(user).data
+            record_audit_log(
+                request,
+                action='CREATE',
+                resource_type='PatientRegistration',
+                resource_id=user.id,
+                patient=getattr(user, 'patient_profile', None),
+                actor=user,
+                details='Patient self-registered.',
+            )
 
             return Response({
-                "message": "User registered successfully!",
+                "message": "Patient registered successfully!",
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
-                "user": user_data
+                "user": UserSerializer(user).data
             }, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class PasswordResetRequestView(APIView):
+    """Request a password reset email without disclosing whether the email exists."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = 'password_reset'
+    serializer_class = PasswordResetRequestSerializer
+
+    @extend_schema(request=PasswordResetRequestSerializer, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip()
+
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        preview_payload = None
+        if user:
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'https://smartcare-hospital-tyr.pages.dev')
+            reset_link = f"{frontend_url.rstrip('/')}/reset-password/{uid}/{token}"
+
+            send_mail(
+                subject="SmartCare HMS — Password Reset Request",
+                message=(
+                    f"Hello {user.get_full_name() or user.username},\n\n"
+                    f"Use the link below to reset your password:\n{reset_link}\n\n"
+                    f"If you did not request this, please ignore this email."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+            record_audit_log(
+                request,
+                action='PASSWORD_RESET',
+                resource_type='PasswordResetRequest',
+                resource_id=user.id,
+                actor=user,
+                details='Password reset email dispatched.',
+            )
+            if settings.DEBUG or settings.TESTING:
+                preview_payload = {'uid': uid, 'token': token}
+
+        resp = {
+            "message": "If an account matches that email, a password reset link has been sent."
+        }
+        if preview_payload is not None:
+            resp['dev_preview'] = preview_payload
+        return Response(resp, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """Confirm uid & token and apply a validated strong password."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = 'password_reset'
+    serializer_class = PasswordResetConfirmSerializer
+
+    @extend_schema(request=PasswordResetConfirmSerializer, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        uid = serializer.validated_data['uid']
+        token = serializer.validated_data['token']
+        new_password = serializer.validated_data['new_password']
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_id, is_active=True)
+        except Exception:
+            return Response({'detail': 'Invalid or expired reset link.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({'detail': 'Invalid or expired reset token.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+
+        record_audit_log(
+            request,
+            action='PASSWORD_RESET',
+            resource_type='PasswordResetConfirm',
+            resource_id=user.id,
+            actor=user,
+            details='Password reset completed successfully.',
+        )
+        return Response({'message': 'Password has been reset successfully. Please sign in.'}, status=status.HTTP_200_OK)
+
+
 # ─────────────────────────────────────────────
-# 3. Current User Profile View
+# 2. Current User Profile & Admin Staff Provisioning
 # ─────────────────────────────────────────────
 class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         user = request.user
-        data = {
-            "user": UserSerializer(user).data
-        }
+        data = {"user": UserSerializer(user).data}
 
         if user.role == 'patient' and hasattr(user, 'patient_profile'):
             data["profile"] = PatientProfileSerializer(user.patient_profile).data
@@ -112,14 +278,38 @@ class UserProfileView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+class AdminStaffListCreateView(generics.ListCreateAPIView):
+    """Admin-only endpoint to inspect users or provision Doctor/Reception/BloodBank/Admin staff."""
+
+    permission_classes = [IsAdminOnly]
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return AdminStaffCreateSerializer
+        return UserSerializer
+
+    def get_queryset(self):
+        qs = User.objects.all().order_by('-date_joined')
+        role = self.request.query_params.get('role')
+        if role:
+            qs = qs.filter(role=role)
+        return qs
+
+    def perform_create(self, serializer):
+        created_user = serializer.save()
+        record_audit_log(
+            self.request,
+            action='CREATE',
+            resource_type='StaffAccount',
+            resource_id=created_user.id,
+            details=f"Provisioned {created_user.role} user @{created_user.username}.",
+        )
+
+
 # ─────────────────────────────────────────────
-# 4. Department Views (Admin Add/Edit/Delete + List)
+# 3. Department Views
 # ─────────────────────────────────────────────
 class DepartmentListCreateView(generics.ListCreateAPIView):
-    """
-    GET: List departments (Supports ?all=true for admin to view inactive ones)
-    POST: Admin creates a department
-    """
     serializer_class = DepartmentSerializer
     permission_classes = [IsAdminOrReadOnly]
 
@@ -131,28 +321,15 @@ class DepartmentListCreateView(generics.ListCreateAPIView):
 
 
 class DepartmentDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    GET, PUT, PATCH, DELETE a specific department by ID.
-    Admin only for updates and deletes.
-    """
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
     permission_classes = [IsAdminOrReadOnly]
 
 
 # ─────────────────────────────────────────────
-# 5. Doctor Views (Admin Add/Edit/Delete + Patient View List)
+# 4. Doctor Views, Availability/Leave & Feedback
 # ─────────────────────────────────────────────
 class DoctorListCreateView(generics.ListCreateAPIView):
-    """
-    GET: List all doctors with filtering and search.
-         Available to patients, doctors, and public directory.
-         Query params:
-           ?department=<id>   -> filter by department
-           ?available=true    -> filter available only
-           ?search=<term>     -> search by doctor name or specialization
-    POST: Admin creates a new doctor (creates User + Doctor profile)
-    """
     permission_classes = [IsAdminOrReadOnly]
 
     def get_serializer_class(self):
@@ -163,17 +340,14 @@ class DoctorListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         queryset = Doctor.objects.select_related('user', 'department').all().order_by('user__first_name')
 
-        # Filter by department
         dept_id = self.request.query_params.get('department')
         if dept_id:
             queryset = queryset.filter(department_id=dept_id)
 
-        # Filter by availability
         available_only = self.request.query_params.get('available')
         if available_only is not None and available_only.lower() == 'true':
             queryset = queryset.filter(is_available=True)
 
-        # Search by doctor name or specialization
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
@@ -183,15 +357,10 @@ class DoctorListCreateView(generics.ListCreateAPIView):
                 Q(specialization__icontains=search) |
                 Q(department__name__icontains=search)
             )
-
         return queryset
 
 
 class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    GET, PUT, PATCH, DELETE a doctor profile.
-    Admin only for updates and deletes.
-    """
     queryset = Doctor.objects.select_related('user', 'department').all()
     permission_classes = [IsAdminOrReadOnly]
 
@@ -201,31 +370,150 @@ class DoctorDetailView(generics.RetrieveUpdateDestroyAPIView):
         return DoctorDetailSerializer
 
     def perform_destroy(self, instance):
-        # Also delete linked User account
         user = instance.user
         instance.delete()
         user.delete()
 
 
+class DoctorAvailabilityToggleView(APIView):
+    """Doctor (for self) or Admin can toggle live on-duty availability."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request={'application/json': {'type': 'object', 'properties': {'doctor_id': {'type': 'integer'}, 'is_available': {'type': 'boolean'}}}}, responses={200: OpenApiTypes.OBJECT})
+    def patch(self, request):
+        user = request.user
+        doctor_id = request.data.get('doctor_id')
+
+        if user.role == 'admin' or user.is_staff:
+            doctor = get_object_or_404(Doctor, pk=doctor_id) if doctor_id else None
+        elif hasattr(user, 'doctor_profile'):
+            doctor = user.doctor_profile
+        else:
+            return Response({'detail': 'Not authorized to toggle doctor availability.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not doctor:
+            return Response({'detail': 'doctor_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_val = request.data.get('is_available')
+        doctor.is_available = (not doctor.is_available) if new_val is None else bool(new_val)
+        doctor.save()
+        return Response({
+            'doctor_id': doctor.id,
+            'is_available': doctor.is_available,
+            'message': f"Availability set to {'On Duty' if doctor.is_available else 'Off Duty'}."
+        })
+
+
+class DoctorLeaveListCreateView(generics.ListCreateAPIView):
+    serializer_class = DoctorLeaveSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = DoctorLeave.objects.select_related('doctor__user').all()
+        doctor_id = self.request.query_params.get('doctor')
+        if doctor_id:
+            qs = qs.filter(doctor_id=doctor_id)
+        elif hasattr(self.request.user, 'doctor_profile') and self.request.user.role == 'doctor':
+            qs = qs.filter(doctor=self.request.user.doctor_profile)
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role == 'doctor' and hasattr(user, 'doctor_profile'):
+            serializer.save(doctor=user.doctor_profile)
+        elif user.role == 'admin' or user.is_staff:
+            if not serializer.validated_data.get('doctor'):
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({'doctor': 'Admin must specify a doctor ID.'})
+            serializer.save()
+        else:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only doctors or administrators can schedule leave.')
+
+
+class DoctorLeaveDetailView(generics.DestroyAPIView):
+    serializer_class = DoctorLeaveSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'admin' or user.is_staff:
+            return DoctorLeave.objects.all()
+        if hasattr(user, 'doctor_profile'):
+            return DoctorLeave.objects.filter(doctor=user.doctor_profile)
+        return DoctorLeave.objects.none()
+
+
+class DoctorFeedbackListCreateView(APIView):
+    """GET doctor ratings/reviews; POST feedback from patient after consultation."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = DoctorFeedbackSerializer
+
+    @extend_schema(responses={200: DoctorFeedbackSerializer(many=True)})
+    def get(self, request):
+        doctor_id = request.query_params.get('doctor')
+        qs = DoctorFeedback.objects.select_related('doctor__user', 'patient__user', 'token').all()
+        if doctor_id:
+            qs = qs.filter(doctor_id=doctor_id)
+        elif request.user.role == 'doctor' and hasattr(request.user, 'doctor_profile'):
+            qs = qs.filter(doctor=request.user.doctor_profile)
+        elif request.user.role == 'patient' and hasattr(request.user, 'patient_profile') and not doctor_id:
+            qs = qs.filter(patient=request.user.patient_profile)
+
+        serializer = DoctorFeedbackSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        if user.role != 'patient' or not hasattr(user, 'patient_profile'):
+            return Response({'detail': 'Only registered patients can submit doctor ratings.'}, status=status.HTTP_403_FORBIDDEN)
+
+        patient = user.patient_profile
+        serializer = DoctorFeedbackSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        doctor = serializer.validated_data['doctor']
+        token = serializer.validated_data.get('token')
+
+        if token:
+            if token.patient_id != patient.id:
+                return Response({'detail': 'You can only rate consultations linked to your own OPD token.'}, status=status.HTTP_403_FORBIDDEN)
+            if token.doctor_id != doctor.id:
+                return Response({'detail': 'Selected token does not belong to the chosen doctor.'}, status=status.HTTP_400_BAD_REQUEST)
+            if token.status not in ['completed', 'admitted']:
+                return Response({'detail': 'Feedback can only be submitted after consultation is completed.'}, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(token, 'feedback'):
+                return Response({'detail': 'Feedback has already been submitted for this consultation.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        feedback = serializer.save(patient=patient)
+        record_audit_log(
+            request,
+            action='CREATE',
+            resource_type='DoctorFeedback',
+            resource_id=feedback.id,
+            patient=patient,
+            details=f"Rated {doctor} {feedback.rating}/5.",
+        )
+        return Response(DoctorFeedbackSerializer(feedback).data, status=status.HTTP_201_CREATED)
+
+
 # ─────────────────────────────────────────────
-# 6. Patient Directory (Cross-Module Integration)
+# 5. Patient Directory & Unified Patient Journey (Anti-IDOR + Audit)
 # ─────────────────────────────────────────────
 class PatientListView(generics.ListAPIView):
-    """
-    GET /api/accounts/patients/
-    Lists registered patients with search filter.
-    Used by Doctors, Bed Management, and Blood Bank to quickly select patients.
-    Strictly isolated: Patients can only view their own profile.
-    """
     serializer_class = PatientProfileSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        # Strict privacy barrier: Patients can only view their own profile, never others
         if user.role == 'patient' and not (user.is_staff or user.is_superuser):
             if hasattr(user, 'patient_profile'):
                 return Patient.objects.filter(id=user.patient_profile.id)
+            return Patient.objects.none()
+
+        if user.role not in ['doctor', 'reception', 'bloodbank_staff', 'admin'] and not user.is_staff:
             return Patient.objects.none()
 
         qs = Patient.objects.select_related('user').all().order_by('-created_at')
@@ -238,73 +526,83 @@ class PatientListView(generics.ListAPIView):
                 Q(patient_id__icontains=search) |
                 Q(user__phone__icontains=search)
             )
+            record_audit_log(
+                self.request,
+                action='VIEW',
+                resource_type='PatientDirectorySearch',
+                details=f"Searched patient directory with query='{search[:80]}'.",
+            )
         return qs
 
 
-# ─────────────────────────────────────────────
-# 7. Complete Unified Patient Journey API (Step 13)
-# ─────────────────────────────────────────────
 class PatientJourneyView(APIView):
     """
     GET /api/accounts/patients/<id>/journey/
-    Connects all 3 modules in one seamless patient journey:
-      - Module 1: OPD Consultation Tokens & Doctors
-      - Module 2: Inpatient Bed Allocation & Admissions
-      - Module 3: Blood Bank Requests & Matching Donors
-    Linked through the Patient ID.
-    Strictly protected: Patients can ONLY view their own journey.
+    Enforces strict object-level authorization and logs clinical views in AuditLog.
     """
+
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request, pk):
-        from rest_framework.exceptions import NotFound
-
-        # Anti-IDOR Security Barrier:
-        # Patients are strictly forbidden from viewing another patient's medical records
-        if request.user.role == 'patient' and not (request.user.is_staff or request.user.is_superuser):
-            if not hasattr(request.user, 'patient_profile'):
+        user = request.user
+        if user.role == 'patient' and not (user.is_staff or user.is_superuser):
+            if not hasattr(user, 'patient_profile'):
                 return Response(
                     {"detail": "Logged in user does not have an active patient profile."},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            user_profile = request.user.patient_profile
-            # Check if requested pk matches their own profile id or user id or 'me'
-            if str(pk).lower() != 'me' and str(pk) != str(user_profile.id) and str(pk) != str(request.user.id):
+            user_profile = user.patient_profile
+            if str(pk).lower() != 'me' and str(pk) != str(user_profile.id) and str(pk) != str(user.id):
+                record_audit_log(
+                    request,
+                    action='VIEW',
+                    resource_type='PatientJourneyDenied',
+                    resource_id=pk,
+                    details='Blocked unauthorized patient journey access attempt (IDOR prevention).',
+                )
                 return Response(
                     {"detail": "Access denied. You are not authorized to view another patient's medical journey."},
                     status=status.HTTP_403_FORBIDDEN
                 )
             patient = user_profile
         else:
-            patient = Patient.objects.filter(pk=pk).first()
-            if not patient:
-                patient = Patient.objects.filter(user_id=pk).first()
+            if user.role not in ['doctor', 'reception', 'bloodbank_staff', 'admin'] and not user.is_staff:
+                return Response({"detail": "Role not authorized to inspect patient records."}, status=status.HTTP_403_FORBIDDEN)
+            patient = Patient.objects.filter(pk=pk).first() or Patient.objects.filter(user_id=pk).first()
             if not patient:
                 raise NotFound("Patient profile not found.")
 
+        record_audit_log(
+            request,
+            action='VIEW',
+            resource_type='PatientJourney',
+            resource_id=patient.id,
+            patient=patient,
+            details=f"Accessed complete medical journey for {patient.patient_id or patient.id}.",
+        )
+
         # 1. Module 1: OPD Tokens
         from apps.opd.models import Token
-        from apps.opd.serializers import TokenSerializer
         tokens_qs = Token.objects.filter(patient=patient).select_related(
             'doctor__user', 'doctor__department', 'department'
         ).order_by('-appointment_date', '-created_at')
 
-        tokens_data = []
-        for t in tokens_qs:
-            tokens_data.append({
-                "id": t.id,
-                "token_code": t.token_code,
-                "token_number": t.token_number,
-                "doctor_name": f"Dr. {t.doctor.user.get_full_name() or t.doctor.user.username}",
-                "department_name": t.department.name if t.department else (t.doctor.department.name if t.doctor and t.doctor.department else 'General'),
-                "room_number": t.doctor.room_number if t.doctor else 'OPD',
-                "status": t.status,
-                "status_display": t.get_status_display(),
-                "priority": t.priority,
-                "symptoms": t.symptoms,
-                "appointment_date": t.appointment_date,
-                "created_at": t.created_at,
-            })
+        tokens_data = [{
+            "id": t.id,
+            "token_code": t.token_code,
+            "token_number": t.token_number,
+            "doctor_name": f"Dr. {t.doctor.user.get_full_name() or t.doctor.user.username}",
+            "department_name": t.department.name if t.department else (t.doctor.department.name if t.doctor and t.doctor.department else 'General'),
+            "room_number": t.doctor.room_number if t.doctor else 'OPD',
+            "status": t.status,
+            "status_display": t.get_status_display(),
+            "priority": t.priority,
+            "time_slot": t.time_slot,
+            "symptoms": t.symptoms,
+            "appointment_date": t.appointment_date,
+            "created_at": t.created_at,
+        } for t in tokens_qs]
 
         # 2. Module 2: Inpatient Bed Admissions
         from apps.beds.models import Admission
@@ -328,24 +626,21 @@ class PatientJourneyView(APIView):
                 "token_code": active_admission.token.token_code if active_admission.token else None,
             }
 
-        admissions_history = []
-        for a in admissions_qs:
-            admissions_history.append({
-                "id": a.id,
-                "bed_number": a.bed.bed_number,
-                "ward_name": a.bed.ward.name,
-                "ward_type": a.bed.ward.ward_type,
-                "status": a.status,
-                "diagnosis": a.diagnosis,
-                "admission_date": a.admission_date,
-                "discharge_date": a.discharge_date,
-                "discharge_notes": a.discharge_notes,
-            })
+        admissions_history = [{
+            "id": a.id,
+            "bed_number": a.bed.bed_number,
+            "ward_name": a.bed.ward.name,
+            "ward_type": a.bed.ward.ward_type,
+            "status": a.status,
+            "diagnosis": a.diagnosis,
+            "admission_date": a.admission_date,
+            "discharge_date": a.discharge_date,
+            "discharge_notes": a.discharge_notes,
+        } for a in admissions_qs]
 
         # 3. Module 3: Blood Bank Requests
         from apps.bloodbank.models import BloodRequest, BloodStock
         blood_requests_qs = BloodRequest.objects.filter(patient=patient).order_by('-created_at')
-
         blood_requests_data = []
         for br in blood_requests_qs:
             stock = BloodStock.objects.filter(blood_group=br.blood_group).first()
@@ -365,6 +660,33 @@ class PatientJourneyView(APIView):
                 "is_stock_low": available < 3 or available < br.units_required,
                 "created_at": br.created_at,
             })
+
+        # 4. Module 4: Clinical Medical Records (Prescriptions, Notes, Lab Reports)
+        from apps.records.models import MedicalRecord
+        records_qs = MedicalRecord.objects.filter(patient=patient).select_related('doctor__user').order_by('-created_at')
+        records_data = [{
+            "id": r.id,
+            "record_type": r.record_type,
+            "title": r.title,
+            "diagnosis": r.diagnosis,
+            "visit_notes": r.visit_notes,
+            "prescription_items": r.prescription_items,
+            "has_attachment": bool(r.attachment),
+            "doctor_name": f"Dr. {r.doctor.user.get_full_name() or r.doctor.user.username}" if r.doctor else 'Hospital Clinician',
+            "created_at": r.created_at,
+        } for r in records_qs]
+
+        # 5. Module 5: Billing & Invoices Summary
+        from apps.billing.models import Invoice
+        invoices_qs = Invoice.objects.filter(patient=patient).order_by('-created_at')
+        invoices_data = [{
+            "id": inv.id,
+            "invoice_number": inv.invoice_number,
+            "status": inv.status,
+            "total_amount": str(inv.total_amount),
+            "payment_method": inv.payment_method,
+            "created_at": inv.created_at,
+        } for inv in invoices_qs]
 
         return Response({
             "patient": {
@@ -386,6 +708,8 @@ class PatientJourneyView(APIView):
                 "current_ward": active_admission.bed.ward.name if active_admission else None,
                 "total_blood_requests": len(blood_requests_data),
                 "pending_blood_requests": sum(1 for b in blood_requests_data if b['status'] == 'pending'),
+                "total_medical_records": len(records_data),
+                "total_invoices": len(invoices_data),
             },
             "module_1_opd": tokens_data,
             "module_2_beds": {
@@ -393,245 +717,66 @@ class PatientJourneyView(APIView):
                 "admissions_history": admissions_history,
             },
             "module_3_bloodbank": blood_requests_data,
+            "module_4_records": records_data,
+            "module_5_billing": invoices_data,
         }, status=status.HTTP_200_OK)
 
 
 # ─────────────────────────────────────────────
-# 7. Admin Analytics Dashboard API (Step 14)
+# 6. Admin Audit Logs & Analytics Dashboard / Reports
 # ─────────────────────────────────────────────
-class AdminAnalyticsDashboardView(APIView):
-    """
-    GET /api/accounts/admin/analytics/
-    Calculates hospital-wide analytics directly from the database:
-      1. Total tokens today (and breakdown by status)
-      2. Average waiting time (in minutes)
-      3. Busiest department (name + token count)
-      4. Bed occupancy percentage (and breakdown by ward)
-      5. Blood stock low alerts (< 3 units)
-    Also supplies formatted data arrays for Chart.js visualizations.
-    """
-    permission_classes = [IsAuthenticated]
+class AuditLogListView(generics.ListAPIView):
+    """GET /api/accounts/audit-logs/ -> Admin-only security & clinical access trail."""
 
-    def get(self, request):
-        from datetime import timedelta
-        from django.utils import timezone
-        from django.db.models import Count, Avg, Q, Sum
-        from apps.opd.models import Token, Queue
-        from apps.beds.models import Bed, Ward, Admission
-        from apps.bloodbank.models import BloodStock, BloodRequest, Donor
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAdminOnly]
 
-        today = timezone.now().date()
+    def get_queryset(self):
+        qs = AuditLog.objects.select_related('actor', 'patient').all().order_by('-created_at')
+        action = self.request.query_params.get('action')
+        resource_type = self.request.query_params.get('resource_type')
+        search = self.request.query_params.get('search')
 
-        # 1. OPD Tokens Analytics
-        today_tokens = Token.objects.filter(appointment_date=today)
-        total_tokens_today = today_tokens.count()
-        waiting_count = today_tokens.filter(status='waiting').count()
-        called_count = today_tokens.filter(status='called').count()
-        in_progress_count = today_tokens.filter(status='in_progress').count()
-        completed_count = today_tokens.filter(status='completed').count()
-        admitted_count = today_tokens.filter(status='admitted').count()
-        skipped_count = today_tokens.filter(status='skipped').count()
-        cancelled_count = today_tokens.filter(status='cancelled').count()
-
-        # 2. Average Waiting Time (in minutes)
-        serviced_tokens = today_tokens.filter(status__in=['called', 'in_progress', 'completed'])
-        wait_times = []
-        for t in serviced_tokens:
-            diff_mins = (t.updated_at - t.created_at).total_seconds() / 60.0
-            if diff_mins >= 0:
-                wait_times.append(diff_mins)
-
-        if wait_times:
-            avg_waiting_time = round(sum(wait_times) / len(wait_times), 1)
-        else:
-            # Fallback to doctor consult average or 15 mins
-            avg_doc_time = Doctor.objects.filter(is_available=True).aggregate(Avg('avg_consult_minutes'))['avg_consult_minutes__avg'] or 15.0
-            avg_waiting_time = round(float(avg_doc_time), 1)
-
-        # 3. Busiest Department
-        # Group today's tokens by department
-        dept_counts_qs = (
-            today_tokens.exclude(department__isnull=True)
-            .values('department__id', 'department__name')
-            .annotate(token_count=Count('id'))
-            .order_by('-token_count')
-        )
-
-        busiest_dept_name = "General Medicine"
-        busiest_dept_tokens = 0
-
-        if dept_counts_qs.exists():
-            busiest = dept_counts_qs.first()
-            busiest_dept_name = busiest['department__name']
-            busiest_dept_tokens = busiest['token_count']
-        else:
-            # Fallback to all-time tokens if today has no tokens yet
-            all_time_busiest = (
-                Token.objects.exclude(department__isnull=True)
-                .values('department__name')
-                .annotate(token_count=Count('id'))
-                .order_by('-token_count')
-                .first()
+        if action:
+            qs = qs.filter(action=action)
+        if resource_type:
+            qs = qs.filter(resource_type__icontains=resource_type)
+        if search:
+            qs = qs.filter(
+                Q(actor_username__icontains=search) |
+                Q(resource_type__icontains=search) |
+                Q(details__icontains=search) |
+                Q(ip_address__icontains=search)
             )
-            if all_time_busiest:
-                busiest_dept_name = all_time_busiest['department__name']
-                busiest_dept_tokens = all_time_busiest['token_count']
-            else:
-                first_dept = Department.objects.first()
-                if first_dept:
-                    busiest_dept_name = first_dept.name
+        return qs[:200]
 
-        # Department distribution for Chart.js
-        all_departments = Department.objects.all().order_by('name')
-        dept_chart_labels = []
-        dept_chart_data = []
-        for dept in all_departments:
-            dept_chart_labels.append(dept.name)
-            # Count today's tokens, or total if today is 0
-            count_today = today_tokens.filter(department=dept).count()
-            dept_chart_data.append(count_today)
 
-        # If all counts are 0 today, show all-time counts for meaningful visualization
-        if sum(dept_chart_data) == 0:
-            dept_chart_data = [Token.objects.filter(department=dept).count() for dept in all_departments]
+class AdminAnalyticsDashboardView(APIView):
+    """GET /api/accounts/admin/analytics/ -> Admin-only executive metrics."""
 
-        # 4. Bed Occupancy Percentage
-        total_beds = Bed.objects.count()
-        occupied_beds = Bed.objects.filter(status='occupied').count()
-        available_beds = Bed.objects.filter(status='available').count()
-        cleaning_beds = Bed.objects.filter(status='cleaning').count()
-        maintenance_beds = Bed.objects.filter(status__in=['maintenance', 'reserved']).count()
+    permission_classes = [IsAdminOnly]
 
-        bed_occupancy_percentage = round((occupied_beds / total_beds * 100), 1) if total_beds > 0 else 0.0
-
-        # Ward-by-ward breakdown for Chart.js
-        wards_qs = Ward.objects.filter(is_active=True).order_by('name')
-        ward_chart_labels = []
-        ward_chart_occupied = []
-        ward_chart_available = []
-        ward_chart_percentages = []
-
-        for w in wards_qs:
-            w_total = w.beds.count()
-            w_occ = w.beds.filter(status='occupied').count()
-            w_avail = w.beds.filter(status='available').count()
-            w_pct = round((w_occ / w_total * 100), 1) if w_total > 0 else 0.0
-
-            ward_chart_labels.append(w.name)
-            ward_chart_occupied.append(w_occ)
-            ward_chart_available.append(w_avail)
-            ward_chart_percentages.append(w_pct)
-
-        # 5. Blood Stock Low Alerts (< 3 units)
-        all_blood_groups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-']
-        stocks_map = {s.blood_group: s for s in BloodStock.objects.all()}
-
-        low_stock_alerts = []
-        blood_chart_labels = []
-        blood_chart_units = []
-        blood_chart_colors = []
-        total_blood_units = 0
-
-        for bg in all_blood_groups:
-            stock = stocks_map.get(bg)
-            units = stock.units_available if stock else 0
-            total_blood_units += units
-            is_low = units < 3
-
-            if is_low:
-                low_stock_alerts.append({
-                    "blood_group": bg,
-                    "units_available": units,
-                    "minimum_threshold": 3,
-                    "shortage": max(0, 3 - units),
-                    "expiry_date": stock.expiry_date if stock else None
-                })
-
-            blood_chart_labels.append(bg)
-            blood_chart_units.append(units)
-            # Red alert color for < 3 units, green for safe
-            blood_chart_colors.append('#ef4444' if is_low else '#10b981')
-
-        # 6. Last 7 Days Daily Token Volume Trend
-        trend_labels = []
-        trend_data = []
-        for i in range(6, -1, -1):
-            day = today - timedelta(days=i)
-            day_count = Token.objects.filter(appointment_date=day).count()
-            trend_labels.append(day.strftime("%a (%d %b)"))
-            trend_data.append(day_count)
-
-        # Build Comprehensive Analytics Payload
-        data = {
-            "summary_kpis": {
-                "total_tokens_today": total_tokens_today,
-                "waiting_tokens": waiting_count,
-                "called_tokens": called_count + in_progress_count,
-                "completed_tokens": completed_count,
-                "average_waiting_time_minutes": avg_waiting_time,
-                "average_waiting_time_display": f"{avg_waiting_time} mins",
-                "busiest_department": {
-                    "name": busiest_dept_name,
-                    "tokens_count": busiest_dept_tokens,
-                },
-                "bed_occupancy_percentage": bed_occupancy_percentage,
-                "total_beds": total_beds,
-                "occupied_beds": occupied_beds,
-                "available_beds": available_beds,
-                "cleaning_beds": cleaning_beds,
-                "blood_stock_low_alerts": {
-                    "count": len(low_stock_alerts),
-                    "has_alerts": len(low_stock_alerts) > 0,
-                    "critical_groups": [item["blood_group"] for item in low_stock_alerts],
-                    "total_blood_units": total_blood_units,
-                },
-                "total_doctors": Doctor.objects.count(),
-                "available_doctors": Doctor.objects.filter(is_available=True).count(),
-                "total_patients": Patient.objects.count(),
-                "active_admissions": Admission.objects.filter(status='admitted').count(),
-                "pending_blood_requests": BloodRequest.objects.filter(status='pending').count(),
-            },
-            "charts": {
-                "token_status_distribution": {
-                    "labels": ["Waiting", "Called / In Progress", "Completed", "Admitted to Ward", "Skipped / Cancelled"],
-                    "data": [
-                        waiting_count,
-                        called_count + in_progress_count,
-                        completed_count,
-                        admitted_count,
-                        skipped_count + cancelled_count
-                    ],
-                    "colors": ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ef4444"]
-                },
-                "daily_token_trend": {
-                    "labels": trend_labels,
-                    "data": trend_data,
-                },
-                "department_tokens": {
-                    "labels": dept_chart_labels,
-                    "data": dept_chart_data,
-                },
-                "bed_status": {
-                    "labels": ["Available", "Occupied", "Cleaning", "Maintenance"],
-                    "data": [available_beds, occupied_beds, cleaning_beds, maintenance_beds],
-                    "colors": ["#10b981", "#ef4444", "#f59e0b", "#6b7280"]
-                },
-                "ward_occupancy": {
-                    "labels": ward_chart_labels,
-                    "occupied": ward_chart_occupied,
-                    "available": ward_chart_available,
-                    "percentages": ward_chart_percentages,
-                },
-                "blood_stock_levels": {
-                    "labels": blood_chart_labels,
-                    "data": blood_chart_units,
-                    "colors": blood_chart_colors,
-                    "threshold": 3
-                }
-            },
-            "alerts": {
-                "low_blood_stock": low_stock_alerts,
-            }
-        }
-
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        data = compute_analytics_data()
         return Response(data, status=status.HTTP_200_OK)
+
+
+class AdminAnalyticsExportView(APIView):
+    """GET /api/accounts/admin/analytics/export/<str:export_format>/ -> Download CSV or PDF."""
+
+    permission_classes = [IsAdminOnly]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request, export_format='csv'):
+        fmt = (export_format or request.query_params.get('export_format', 'csv')).lower()
+        data = compute_analytics_data()
+
+        if fmt == 'pdf':
+            record_audit_log(request, action='EXPORT', resource_type='AnalyticsPDF', details='Exported executive PDF analytics report.')
+            return build_analytics_pdf_response(data)
+        if fmt == 'csv':
+            record_audit_log(request, action='EXPORT', resource_type='AnalyticsCSV', details='Exported executive CSV analytics report.')
+            return build_analytics_csv_response(data)
+
+        return Response({'error': "Unsupported format. Use 'csv' or 'pdf'."}, status=status.HTTP_400_BAD_REQUEST)
