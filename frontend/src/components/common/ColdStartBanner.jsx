@@ -1,8 +1,7 @@
 /**
  * src/components/common/ColdStartBanner.jsx
  * -----------------------------------------
- * Displays a helpful banner whenever the Render free-tier backend takes >3.5s
- * to wake up from sleep, reassuring users instead of showing a blank/frozen UI.
+ * Editorial toast displayed whenever the backend server is waking from cold start.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -21,9 +20,9 @@ const ColdStartBanner = () => {
   if (!waking) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-md bg-amber-950 text-amber-50 border border-amber-500/40 rounded-2xl px-4 py-3 shadow-2xl flex items-center space-x-3">
-      <div className="animate-spin rounded-full h-5 w-5 border-2 border-amber-300 border-t-transparent shrink-0" />
-      <p className="text-xs font-medium leading-relaxed">{t('coldStartMsg')}</p>
+    <div className="fixed bottom-4 right-4 z-50 max-w-md bg-ink text-white border border-slate-700 rounded-xl px-4 py-3 shadow-xl flex items-center gap-3">
+      <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent shrink-0" />
+      <p className="text-xs font-medium leading-relaxed text-slate-200">{t('coldStartMsg')}</p>
     </div>
   );
 };

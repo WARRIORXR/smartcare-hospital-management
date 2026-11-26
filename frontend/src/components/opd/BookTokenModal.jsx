@@ -92,38 +92,39 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-gray-100 my-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="editorial-card max-w-lg w-full p-6 sm:p-8 shadow-2xl my-6">
         {!generatedToken ? (
           <div>
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex justify-between items-start gap-4 mb-5 pb-4 border-b border-hairline">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 tracking-tight">
+                <span className="editorial-eyebrow">Appointment Booking</span>
+                <h3 className="font-display text-lg font-bold text-ink mt-0.5">
                   Book OPD Token or Advance Slot
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Choose today's queue or book an advance consultation slot (up to 30 days)
+                <p className="text-xs text-muted mt-0.5">
+                  Choose today&apos;s live queue or schedule a slot up to 30 days ahead.
                 </p>
               </div>
-              <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none">
+              <button type="button" onClick={onClose} className="text-muted hover:text-ink text-xl font-bold leading-none cursor-pointer">
                 ×
               </button>
             </div>
 
             {error && (
-              <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded-md text-xs font-medium text-red-700">
+              <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 border-l-4 border-l-clinical-danger text-xs font-medium text-clinical-danger">
                 {error}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Consulting Doctor *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Consulting Doctor *</label>
                 {doctor ? (
-                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl">
-                    <p className="text-sm font-bold text-blue-900">{doctor.doctor_name}</p>
-                    <p className="text-xs text-blue-700 mt-0.5">
-                      {doctor.specialization} • 📍 {doctor.room_number || 'Room 101'} • Fee: ₹{doctor.consultation_fee}
+                  <div className="p-3.5 bg-cobalt-tint/50 border border-cobalt/20 rounded-xl">
+                    <p className="text-sm font-bold text-ink">{doctor.doctor_name}</p>
+                    <p className="text-xs text-muted mt-0.5">
+                      {doctor.specialization} · <span className="font-mono font-semibold text-cobalt">{doctor.room_number || 'Room 101'}</span> · Fee: <span className="font-mono font-semibold text-clinical-success">₹{doctor.consultation_fee}</span>
                     </p>
                   </div>
                 ) : (
@@ -131,7 +132,7 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
                     required
                     value={selectedDoctorId}
                     onChange={(e) => setSelectedDoctorId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="editorial-input"
                   >
                     <option value="">Select Doctor</option>
                     {doctors.map((d) => (
@@ -144,23 +145,23 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Select Priority Level *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Select Priority Level *</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'normal', label: '🟢 Normal', sub: 'Standard', activeCls: 'bg-blue-50 border-blue-600 text-blue-700' },
-                    { id: 'senior_citizen', label: '🟡 Senior Citizen', sub: 'Fast-track', activeCls: 'bg-amber-50 border-amber-600 text-amber-700' },
-                    { id: 'emergency', label: '🔴 Emergency', sub: 'Immediate', activeCls: 'bg-red-50 border-red-600 text-red-700' },
+                    { id: 'normal', label: 'Normal', sub: 'Standard', activeCls: 'bg-cobalt-tint border-cobalt text-cobalt' },
+                    { id: 'senior_citizen', label: 'Senior Citizen', sub: 'Fast-track', activeCls: 'bg-amber-50 border-clinical-warning text-clinical-warning' },
+                    { id: 'emergency', label: 'Emergency', sub: 'Immediate', activeCls: 'bg-rose-50 border-clinical-danger text-clinical-danger' },
                   ].map((p) => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => setPriority(p.id)}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition text-center cursor-pointer ${
-                        priority === p.id ? `${p.activeCls} shadow-xs` : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      className={`py-2 px-2 rounded-lg text-xs font-semibold border transition text-center cursor-pointer ${
+                        priority === p.id ? p.activeCls : 'border-hairline text-muted hover:bg-surface'
                       }`}
                     >
                       {p.label}
-                      <span className="block text-[10px] font-normal text-gray-500 mt-0.5">{p.sub}</span>
+                      <span className="block text-[10px] font-normal opacity-80 mt-0.5">{p.sub}</span>
                     </button>
                   ))}
                 </div>
@@ -168,7 +169,7 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Consultation Date *</label>
+                  <label className="block text-xs font-semibold text-ink mb-1.5">Consultation Date *</label>
                   <input
                     type="date"
                     required
@@ -179,18 +180,18 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
                       setAppointmentDate(e.target.value);
                       setTimeSlot('');
                     }}
-                    className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="editorial-input"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label className="block text-xs font-semibold text-ink mb-1.5">
                     Advance Time Slot (Optional)
                   </label>
                   <select
                     value={timeSlot}
                     disabled={slotsData.is_on_leave}
                     onChange={(e) => setTimeSlot(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white disabled:bg-gray-100"
+                    className="editorial-input disabled:bg-surface"
                   >
                     <option value="">Walk-In Live Queue (Anytime)</option>
                     {(slotsData.slots || []).map((s) => (
@@ -203,93 +204,97 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
               </div>
 
               {slotsData.is_on_leave && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-semibold">
-                  🚫 Doctor is on scheduled leave on {appointmentDate} ({slotsData.leave_reason || 'Unavailable'}). Please select another date.
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-clinical-danger font-semibold">
+                  Doctor is on scheduled leave on {appointmentDate} ({slotsData.leave_reason || 'Unavailable'}). Please select another date.
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Symptoms / Reason (Optional)</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Symptoms / Reason (Optional)</label>
                 <textarea
                   rows="2"
                   placeholder="e.g. Fever, chest pain, regular checkup..."
                   value={symptoms}
                   onChange={(e) => setSymptoms(e.target.value)}
-                  className="w-full px-3.5 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input resize-none"
                 />
               </div>
 
-              <div className="pt-3 flex justify-end space-x-3 border-t border-gray-100">
+              <div className="pt-3 flex justify-end gap-2.5 border-t border-hairline">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+                  className="editorial-btn-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading || slotsData.is_on_leave}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
+                  className="editorial-btn-primary px-5"
                 >
-                  {loading ? 'Booking...' : appointmentDate > todayStr || timeSlot ? '📅 Confirm Advance Booking' : '🎟️ Generate Token'}
+                  {loading ? 'Booking...' : appointmentDate > todayStr || timeSlot ? 'Confirm Advance Booking' : 'Generate OPD Token'}
                 </button>
               </div>
             </form>
           </div>
         ) : (
-          <div className="text-center">
-            <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-sm">
-              ✅
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 bg-emerald-50 text-clinical-success border border-emerald-200 rounded-xl flex items-center justify-center mx-auto font-bold text-lg">
+              ✓
             </div>
-            <h3 className="text-xl font-bold text-gray-900">
-              {generatedToken.is_advance_booking ? 'Advance Appointment Confirmed!' : 'Token Generated Successfully!'}
-            </h3>
-            <p className="text-xs text-gray-500 mt-1">
-              SMS / WhatsApp proximity alert will notify you automatically when you are 3 positions away.
-            </p>
+            <div>
+              <h3 className="font-display text-xl font-bold text-ink">
+                {generatedToken.is_advance_booking ? 'Advance Appointment Confirmed' : 'OPD Token Generated'}
+              </h3>
+              <p className="text-xs text-muted mt-1">
+                SMS / WhatsApp proximity alert will notify you automatically when you are 3 positions away.
+              </p>
+            </div>
 
-            <div className="my-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50/60 rounded-2xl border border-blue-200 text-center relative overflow-hidden">
-              <div className="text-4xl font-extrabold text-blue-700 tracking-wider my-2 font-mono">
+            <div className="p-6 bg-cobalt-tint/50 rounded-xl border border-cobalt/20 text-center space-y-3">
+              <div className="font-mono text-4xl font-bold text-cobalt tracking-tight">
                 {generatedToken.token_code}
               </div>
-              <div className="inline-block px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold mb-4 border border-amber-200">
-                {generatedToken.appointment_date} {generatedToken.time_slot ? `• ${generatedToken.time_slot}` : '• Live Queue'}
+              <div className="inline-block px-3 py-1 bg-white text-ink rounded-full font-mono text-[11px] font-semibold border border-hairline">
+                {generatedToken.appointment_date} {generatedToken.time_slot ? `· ${generatedToken.time_slot}` : '· Live Queue'}
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-left bg-white p-3.5 rounded-xl border border-blue-100 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-left bg-white p-3.5 rounded-xl border border-hairline text-xs mt-2">
                 <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Doctor</span>
-                  <span className="font-bold text-gray-900">{generatedToken.doctor_name}</span>
+                  <span className="font-mono text-muted block text-[10px] uppercase">Doctor</span>
+                  <span className="font-semibold text-ink">{generatedToken.doctor_name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Clinic Room</span>
-                  <span className="font-bold text-blue-700">📍 {generatedToken.room_number || 'Room 101'}</span>
+                  <span className="font-mono text-muted block text-[10px] uppercase">Clinic Room</span>
+                  <span className="font-mono font-bold text-cobalt">{generatedToken.room_number || 'Room 101'}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Queue Position</span>
-                  <span className="font-bold text-gray-900">#{generatedToken.queue_position} in line</span>
+                  <span className="font-mono text-muted block text-[10px] uppercase">Queue Position</span>
+                  <span className="font-semibold text-ink">#{generatedToken.queue_position} in line</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Est. Wait</span>
-                  <span className="font-bold text-emerald-700">⏱️ ~{generatedToken.estimated_wait_minutes} mins</span>
+                  <span className="font-mono text-muted block text-[10px] uppercase">Est. Wait</span>
+                  <span className="font-mono font-bold text-clinical-success">~{generatedToken.estimated_wait_minutes} mins</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
               <button
+                type="button"
                 onClick={() => {
                   onClose();
                   navigate('/patient/tokens');
                 }}
-                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md transition cursor-pointer"
+                className="flex-1 editorial-btn-primary py-2.5"
               >
-                📋 View in My Tokens
+                Track in My Passes →
               </button>
               <button
+                type="button"
                 onClick={onClose}
-                className="py-2.5 px-4 rounded-xl text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition cursor-pointer"
+                className="editorial-btn-secondary py-2.5"
               >
                 Done
               </button>

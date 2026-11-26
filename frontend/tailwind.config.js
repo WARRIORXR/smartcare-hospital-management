@@ -1,37 +1,50 @@
-/** 
+/**
  * tailwind.config.js
  * -------------------
- * Tailwind CSS configuration for SmartCare frontend.
- * 'content' tells Tailwind which files to scan for class names
- * so it can remove unused CSS in production (called "purging").
+ * Editorial Clinical design tokens for SmartCare HMS.
  */
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",   // scan all JS/JSX/TS/TSX files
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
-      // Custom SmartCare brand colors
       colors: {
+        canvas: '#FFFFFF',
+        surface: '#F6F8FB',
+        hairline: '#E2E8F0',
+        ink: '#0B1220',
+        muted: '#526071',
+        cobalt: {
+          DEFAULT: '#1453D6',
+          hover: '#0F44B5',
+          tint: '#EEF4FF',
+        },
+        clinical: {
+          success: '#0D7A5F',
+          warning: '#B45309',
+          danger: '#C82333',
+        },
         primary: {
-          50:  '#eff6ff',
-          100: '#dbeafe',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
+          50: '#EEF4FF',
+          100: '#DBEAFE',
+          500: '#3B82F6',
+          600: '#1453D6',
+          700: '#0F44B5',
         },
         hospital: {
-          blue:  '#1e40af',
-          green: '#065f46',
-          red:   '#991b1b',
-        }
+          blue: '#1453D6',
+          green: '#0D7A5F',
+          red: '#C82333',
+        },
       },
-      // Custom font family
       fontFamily: {
+        display: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
     },
   },
   plugins: [],
-}
+};

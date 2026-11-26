@@ -1,7 +1,7 @@
 /**
  * src/components/common/Navbar.jsx
  * ---------------------------------
- * Minimal, Clean Universal Navigation Bar with role links & EN / HI / PA Language Switcher.
+ * Editorial Clinical Navigation Bar with role links & EN / HI / PA Language Switcher.
  */
 
 import React, { useState } from 'react';
@@ -14,6 +14,28 @@ const LANG_OPTIONS = [
   { code: 'hi', label: 'हिं' },
   { code: 'pa', label: 'ਪੰ' },
 ];
+
+export const BrandLogo = ({ size = 'md' }) => {
+  const { t } = useLanguage();
+  const boxCls = size === 'lg' ? 'w-10 h-10 rounded-xl' : 'w-8 h-8 rounded-lg';
+  const iconSize = size === 'lg' ? 20 : 16;
+
+  return (
+    <div className="flex items-center gap-2.5 select-none">
+      <div className={`${boxCls} bg-cobalt flex items-center justify-center text-white shrink-0`}>
+        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="font-display text-lg font-bold text-ink tracking-tight">{t('brand')}</span>
+        <span className="font-mono text-[10px] font-semibold bg-cobalt-tint text-cobalt px-1.5 py-0.5 rounded border border-cobalt/15">
+          {t('hms')} v2.0
+        </span>
+      </div>
+    </div>
+  );
+};
 
 const Navbar = () => {
   const { user, logout, getDashboardPath } = useAuth();
@@ -31,138 +53,137 @@ const Navbar = () => {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'patient':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        return 'bg-emerald-50 text-clinical-success border-emerald-200';
       case 'doctor':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-cobalt-tint text-cobalt border-cobalt/20';
       case 'reception':
-        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+        return 'bg-cobalt-tint text-cobalt border-cobalt/20';
       case 'admin':
-        return 'bg-purple-50 text-purple-700 border-purple-200';
+        return 'bg-surface text-ink border-hairline';
       case 'bloodbank_staff':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
+        return 'bg-rose-50 text-clinical-danger border-rose-200';
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return 'bg-surface text-muted border-hairline';
     }
   };
 
   const getRoleLabel = (role) => {
     switch (role) {
-      case 'patient': return '👤 Patient';
-      case 'doctor': return '👨‍⚕️ Doctor';
-      case 'reception': return '🧾 Receptionist';
-      case 'admin': return '🛡️ Admin';
-      case 'bloodbank_staff': return '🩸 Blood Bank';
-      default: return role;
+      case 'patient': return 'PATIENT';
+      case 'doctor': return 'DOCTOR';
+      case 'reception': return 'RECEPTIONIST';
+      case 'admin': return 'ADMIN';
+      case 'bloodbank_staff': return 'BLOOD BANK';
+      default: return role?.toUpperCase() || 'USER';
     }
   };
 
-  const isCurrent = (path) => location.pathname === path;
+  const isCurrent = (path) => {
+    if (location.pathname === path) return true;
+    if (path !== '/' && location.pathname.startsWith(`${path}/`)) return true;
+    return false;
+  };
 
   const getNavLinks = () => {
     if (!user) return [];
     switch (user.role) {
-      case 'admin':
+      case 'patient':
         return [
-          { name: t('navAnalytics'), path: '/admin/dashboard', icon: '📊' },
-          { name: t('navStaff'), path: '/admin/manage', icon: '👨‍⚕️' },
-          { name: t('navBeds'), path: '/admin/beds', icon: '🛏️' },
-          { name: t('navBloodStock'), path: '/bloodbank', icon: '🩸' },
-          { name: t('navBilling'), path: '/billing', icon: '💳' },
-          { name: t('navDisplay'), path: '/display', icon: '📺' },
+          { name: 'Portal', path: '/patient/dashboard' },
+          { name: 'Queues', path: '/patient/book-token' },
+          { name: 'Doctors', path: '/patient/doctors' },
+          { name: 'Passes', path: '/patient/tokens' },
+          { name: 'Journey', path: '/patient/journey' },
+          { name: 'Records', path: '/records' },
+          { name: 'Billing', path: '/billing' },
         ];
       case 'doctor':
         return [
-          { name: t('navQueue'), path: '/doctor/dashboard', icon: '👨‍⚕️' },
-          { name: t('navRecords'), path: '/records', icon: '🩺' },
-          { name: t('navBeds'), path: '/beds', icon: '🛏️' },
-          { name: t('navBloodStock'), path: '/bloodbank', icon: '🩸' },
-          { name: t('navDisplay'), path: '/display', icon: '📺' },
+          { name: 'OPD Queue', path: '/doctor/dashboard' },
+          { name: 'Write Rx', path: '/records/new' },
+          { name: 'Records', path: '/records' },
+          { name: 'Inpatients', path: '/beds/inpatients' },
+          { name: 'Blood Req', path: '/bloodbank/requests' },
+          { name: 'Billing', path: '/billing' },
         ];
       case 'reception':
         return [
-          { name: t('navReceptionDesk'), path: '/reception/dashboard', icon: '🧾' },
-          { name: t('navBeds'), path: '/beds', icon: '🛏️' },
-          { name: t('navBilling'), path: '/billing', icon: '💳' },
-          { name: t('navBloodRequests'), path: '/bloodbank/requests', icon: '📋' },
-          { name: t('navDisplay'), path: '/display', icon: '📺' },
+          { name: 'Reception', path: '/reception/dashboard' },
+          { name: 'Ward Grid', path: '/beds' },
+          { name: 'Inpatients', path: '/beds/inpatients' },
+          { name: 'New Bill', path: '/billing/new' },
+          { name: 'Invoices', path: '/billing' },
+          { name: 'Blood Req', path: '/bloodbank/requests' },
         ];
-      case 'patient':
+      case 'admin':
         return [
-          { name: t('navMyPortal'), path: '/patient/dashboard', icon: '👤' },
-          { name: t('navBookToken'), path: '/patient/book-token', icon: '🎟️' },
-          { name: t('navMyPasses'), path: '/patient/tokens', icon: '📱' },
-          { name: t('navRecords'), path: '/records', icon: '🩺' },
-          { name: t('navBilling'), path: '/billing', icon: '💳' },
-          { name: t('navBloodRequests'), path: '/bloodbank/requests', icon: '🩸' },
+          { name: t('navAnalytics'), path: '/admin/dashboard' },
+          { name: 'Staff', path: '/admin/manage' },
+          { name: 'Ward Grid', path: '/beds' },
+          { name: 'Inpatients', path: '/beds/inpatients' },
+          { name: 'Blood Bank', path: '/bloodbank' },
+          { name: 'Billing', path: '/billing' },
         ];
       case 'bloodbank_staff':
         return [
-          { name: t('navBloodStock'), path: '/bloodbank/stock', icon: '🩸' },
-          { name: t('navBloodRequests'), path: '/bloodbank/requests', icon: '📋' },
-          { name: t('navDonors'), path: '/bloodbank/donors', icon: '🤝' },
+          { name: t('navBloodStock'), path: '/bloodbank/stock' },
+          { name: t('navBloodRequests'), path: '/bloodbank/requests' },
+          { name: t('navDonors'), path: '/bloodbank/donors' },
         ];
       default:
-        return [{ name: 'Dashboard', path: getDashboardPath(user.role), icon: '🏠' }];
+        return [{ name: 'Dashboard', path: getDashboardPath(user.role) }];
     }
   };
 
   const navLinks = getNavLinks();
 
   return (
-    <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-5">
-            <div
+    <header className="bg-white/95 backdrop-blur-md border-b border-hairline sticky top-0 z-40">
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16 gap-3">
+          <div className="flex items-center gap-5 min-w-0 flex-1">
+            <button
+              type="button"
               onClick={() => {
                 setMobileMenuOpen(false);
                 navigate(user ? getDashboardPath(user.role) : '/');
               }}
-              className="flex items-center space-x-2 cursor-pointer group select-none"
+              className="cursor-pointer shrink-0 focus:outline-none"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-lg shadow-xs group-hover:scale-105 transition">
-                🏥
-              </div>
-              <div className="flex items-baseline space-x-1.5">
-                <span className="text-lg font-bold text-slate-900 tracking-tight">{t('brand')}</span>
-                <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
-                  {t('hms')}
-                </span>
-              </div>
-            </div>
+              <BrandLogo />
+            </button>
 
             {user && (
-              <nav className="hidden xl:flex items-center space-x-1">
+              <nav className="hidden lg:flex items-center gap-1 overflow-x-auto">
                 {navLinks.map((link) => (
                   <Link
                     key={link.path}
                     to={link.path}
-                    className={`inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    className={`px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition whitespace-nowrap ${
                       isCurrent(link.path)
-                        ? 'bg-slate-900 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                        ? 'text-cobalt font-semibold bg-cobalt-tint/60'
+                        : 'text-muted hover:text-ink hover:bg-surface'
                     }`}
                   >
-                    <span>{link.icon}</span>
-                    <span>{link.name}</span>
+                    {link.name}
                   </Link>
                 ))}
               </nav>
             )}
           </div>
 
-          <div className="flex items-center space-x-2.5">
+          <div className="flex items-center gap-3 shrink-0">
             {/* Multilingual EN / Hindi / Punjabi Switcher */}
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            <div className="inline-flex rounded-lg border border-hairline bg-surface p-0.5">
               {LANG_OPTIONS.map((opt) => (
                 <button
                   key={opt.code}
                   type="button"
                   onClick={() => setLang(opt.code)}
-                  className={`px-2 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                  className={`px-2 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer ${
                     lang === opt.code
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cobalt text-white'
+                      : 'text-muted hover:text-ink'
                   }`}
                 >
                   {opt.label}
@@ -172,41 +193,53 @@ const Navbar = () => {
 
             {user ? (
               <>
-                <span className={`hidden sm:inline-flex items-center text-xs px-2.5 py-1 rounded-full font-semibold border ${getRoleBadge(user.role)}`}>
+                <span className={`hidden sm:inline-flex items-center font-mono text-[10px] px-2.5 py-1 rounded-md font-semibold border tracking-wider ${getRoleBadge(user.role)}`}>
                   {getRoleLabel(user.role)}
                 </span>
 
                 <div className="text-right hidden md:block">
-                  <p className="text-xs font-semibold text-slate-900 leading-tight">
-                    {user.first_name ? `${user.first_name} ${user.last_name || ''}` : user.username}
+                  <p className="text-xs font-semibold text-ink leading-tight">
+                    {user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username}
                   </p>
-                  <p className="text-[10px] text-slate-400 font-mono">
+                  <p className="text-[10px] text-muted font-mono">
                     {user.patient_id || `@${user.username}`}
                   </p>
                 </div>
 
                 <button
                   onClick={handleLogout}
-                  className="hidden sm:inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition cursor-pointer"
+                  className="hidden sm:inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-clinical-danger hover:bg-rose-50 border border-transparent hover:border-rose-200 transition cursor-pointer"
                 >
-                  <span>{t('signOut')}</span>
-                  <span className="ml-1 text-sm">🚪</span>
+                  {t('signOut')}
                 </button>
 
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                   aria-label="Toggle navigation menu"
-                  className="xl:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                  className="lg:hidden p-2 rounded-lg text-muted hover:text-ink hover:bg-surface border border-hairline transition cursor-pointer"
                 >
-                  <span className="text-lg leading-none">{mobileMenuOpen ? '✕' : '☰'}</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {mobileMenuOpen ? (
+                      <>
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </>
+                    ) : (
+                      <>
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
+                      </>
+                    )}
+                  </svg>
                 </button>
               </>
             ) : (
-              <div className="flex items-center space-x-2">
-                <Link to="/login" className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg transition">
+              <div className="flex items-center gap-2">
+                <Link to="/login" className="px-3.5 py-1.5 text-xs font-semibold text-ink hover:bg-surface rounded-lg transition">
                   {t('signIn')}
                 </Link>
-                <Link to="/register" className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-xs">
+                <Link to="/register" className="px-3.5 py-1.5 text-xs font-semibold text-white bg-cobalt hover:bg-cobalt-hover rounded-lg transition">
                   {t('register')}
                 </Link>
               </div>
@@ -216,44 +249,42 @@ const Navbar = () => {
       </div>
 
       {mobileMenuOpen && user && (
-        <div className="xl:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-5 space-y-2">
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl mb-3 border border-slate-200/80">
+        <div className="lg:hidden border-t border-hairline bg-white px-4 pt-3 pb-5 space-y-3">
+          <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-hairline">
             <div>
-              <p className="text-xs font-semibold text-slate-900">
-                {user.first_name ? `${user.first_name} ${user.last_name || ''}` : user.username}
+              <p className="text-xs font-semibold text-ink">
+                {user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username}
               </p>
-              <p className="text-[11px] text-slate-500 font-mono">
+              <p className="text-[11px] text-muted font-mono">
                 {user.patient_id || `@${user.username}`}
               </p>
             </div>
-            <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${getRoleBadge(user.role)}`}>
+            <span className={`font-mono text-[10px] px-2.5 py-1 rounded-md font-semibold border ${getRoleBadge(user.role)}`}>
               {getRoleLabel(user.role)}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${
-                  isCurrent(link.path) ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+                className={`flex items-center px-3 py-2.5 rounded-lg text-xs font-semibold transition ${
+                  isCurrent(link.path) ? 'bg-cobalt text-white' : 'text-ink hover:bg-surface'
                 }`}
               >
-                <span className="text-base">{link.icon}</span>
-                <span>{link.name}</span>
+                {link.name}
               </Link>
             ))}
           </div>
 
-          <div className="pt-3 border-t border-slate-100">
+          <div className="pt-3 border-t border-hairline">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center justify-center space-x-2 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-lg text-xs font-semibold text-clinical-danger bg-rose-50 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
             >
-              <span>{t('signOut')}</span>
-              <span>🚪</span>
+              {t('signOut')}
             </button>
           </div>
         </div>

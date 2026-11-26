@@ -73,36 +73,39 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full p-6 sm:p-8 my-8 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-xs overflow-y-auto">
+      <div className="editorial-card shadow-2xl max-w-5xl w-full p-6 sm:p-8 my-8 relative">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-bold transition"
+          className="absolute top-5 right-5 text-muted hover:text-ink text-xl font-bold transition cursor-pointer"
         >
-          ✕
+          ×
         </button>
 
-        <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-700 text-2xl flex items-center justify-center shadow-xs">
-            📜
+        <div className="flex items-center gap-3.5 mb-6 border-b border-hairline pb-4">
+          <div className="w-10 h-10 rounded-xl bg-cobalt-tint text-cobalt flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
           </div>
           <div>
-            <h3 className="text-xl font-bold text-gray-900">Unified Patient Medical Journey</h3>
-            <p className="text-xs text-gray-500">
-              Cross-Module Timeline: OPD &rarr; Beds &rarr; Blood Bank &rarr; Clinical Records &rarr; Billing
+            <h3 className="font-display text-lg font-bold text-ink">Unified Patient Medical Journey</h3>
+            <p className="text-xs text-muted">
+              Connected Timeline: OPD Consultation &rarr; Ward Beds &rarr; Blood Bank &rarr; Clinical Records &rarr; Billing
             </p>
           </div>
         </div>
 
         {loading && (
           <div className="py-16 text-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-3"></div>
-            <p className="text-sm text-gray-500">Retrieving linked medical records across all hospital modules...</p>
+            <div className="animate-spin rounded-full h-9 w-9 border-b-2 border-cobalt mx-auto mb-3"></div>
+            <p className="text-xs text-muted">Retrieving linked medical records across all hospital modules...</p>
           </div>
         )}
 
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm mb-4">
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-clinical-danger text-xs font-medium mb-4">
             {error}
           </div>
         )}
@@ -110,9 +113,9 @@ const PatientJourneyModal = ({ isOpen, onClose, patientId, initialData = null })
         {journeyData && !loading && (
           <div className="space-y-6">
             {/* Patient Header Summary Badge */}
-            <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-3 shadow-xs">
+            <div className="bg-surface border border-hairline rounded-xl p-4 flex flex-wrap justify-between items-center gap-3">
               <div className="flex items-center gap-3">
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-xs">
+                <span className="text-xs font-mono font-bold text-cobalt bg-white px-2.5 py-1 rounded-lg border border-cobalt/20">
                   {journeyData.patient?.patient_code}
                 </span>
                 <div>

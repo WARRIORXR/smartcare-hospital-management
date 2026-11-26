@@ -1,7 +1,7 @@
 /**
  * src/pages/Register.jsx
  * ----------------------
- * Patient Self-Registration Portal.
+ * Patient Self-Registration Portal (Editorial Clinical).
  * Enforces strict patient-only registration (staff accounts created by Admin)
  * and strong password complexity rules matching backend Django validators.
  */
@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { BrandLogo } from '../components/common/Navbar';
 
 const Register = () => {
   const { user, isAuthenticated, register, getDashboardPath } = useAuth();
@@ -83,34 +84,29 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center mb-6">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white text-2xl shadow-sm mb-3">
-          🏥
+    <div className="min-h-screen bg-surface flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-xl space-y-6">
+        <div className="flex flex-col items-center text-center space-y-2">
+          <BrandLogo size="lg" />
+          <h1 className="font-display text-2xl font-bold text-ink pt-1">
+            Patient Portal Registration
+          </h1>
+          <p className="text-xs text-muted max-w-md">
+            Self-registration creates a Patient account. Staff &amp; Doctors are provisioned by Hospital Admin.
+          </p>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          Patient Portal Registration
-        </h1>
-        <p className="mt-1 text-xs text-slate-500 font-medium">
-          Self-registration creates a Patient account. Staff & Doctors are provisioned by Hospital Admin.
-        </p>
-      </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl">
-        <div className="bg-white py-7 px-6 sm:px-8 rounded-2xl border border-slate-200/90 shadow-sm">
+        <div className="editorial-card p-6 sm:p-8 space-y-5">
           {error && (
-            <div className="mb-5 bg-red-50 border-l-4 border-red-500 p-3.5 rounded-md">
-              <div className="flex">
-                <span className="text-red-500 font-bold mr-2">⚠️</span>
-                <p className="text-sm text-red-700 font-medium">{error}</p>
-              </div>
+            <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 border-l-4 border-l-clinical-danger text-xs text-clinical-danger font-medium">
+              {error}
             </div>
           )}
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">First Name *</label>
                 <input
                   type="text"
                   name="first_name"
@@ -118,11 +114,11 @@ const Register = () => {
                   value={formData.first_name}
                   onChange={handleChange}
                   placeholder="e.g. Rahul"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Last Name *</label>
                 <input
                   type="text"
                   name="last_name"
@@ -130,14 +126,14 @@ const Register = () => {
                   value={formData.last_name}
                   onChange={handleChange}
                   placeholder="e.g. Verma"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Username *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Username *</label>
                 <input
                   type="text"
                   name="username"
@@ -145,11 +141,11 @@ const Register = () => {
                   value={formData.username}
                   onChange={handleChange}
                   placeholder="e.g. rahulv"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Email Address *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Email Address *</label>
                 <input
                   type="email"
                   name="email"
@@ -157,35 +153,35 @@ const Register = () => {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="rahul@example.com"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Phone Number (for SMS/WhatsApp alerts)</label>
+              <label className="block text-xs font-semibold text-ink mb-1.5">Phone Number (for SMS/WhatsApp alerts)</label>
               <input
                 type="tel"
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
                 placeholder="+91-9876543210"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="editorial-input"
               />
             </div>
 
-            <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 space-y-3">
-              <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+            <div className="p-4 bg-surface rounded-xl border border-hairline space-y-3">
+              <p className="font-mono text-[10px] font-semibold text-cobalt uppercase tracking-wider">
                 Patient Medical Details
               </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Gender</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Gender</label>
                   <select
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+                    className="editorial-input"
                   >
                     <option value="M">Male</option>
                     <option value="F">Female</option>
@@ -193,12 +189,12 @@ const Register = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Blood Group</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Blood Group</label>
                   <select
                     name="blood_group"
                     value={formData.blood_group}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+                    className="editorial-input"
                   >
                     {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((bg) => (
                       <option key={bg} value={bg}>{bg}</option>
@@ -206,13 +202,13 @@ const Register = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Date of Birth</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Date of Birth</label>
                   <input
                     type="date"
                     name="date_of_birth"
                     value={formData.date_of_birth}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+                    className="editorial-input"
                   />
                 </div>
               </div>
@@ -220,7 +216,7 @@ const Register = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Strong Password *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Strong Password *</label>
                 <input
                   type="password"
                   name="password"
@@ -228,11 +224,11 @@ const Register = () => {
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="Min 8 chars, A-Z, a-z, 0-9"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input font-mono"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Confirm Password *</label>
+                <label className="block text-xs font-semibold text-ink mb-1.5">Confirm Password *</label>
                 <input
                   type="password"
                   name="password_confirm"
@@ -240,28 +236,26 @@ const Register = () => {
                   value={formData.password_confirm}
                   onChange={handleChange}
                   placeholder="Repeat password"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="editorial-input font-mono"
                 />
               </div>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-muted">
               Password policy: minimum 8 characters including uppercase, lowercase, and a number or symbol.
             </p>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-md text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition cursor-pointer"
-              >
-                {loading ? 'Creating Patient Account...' : 'Create Patient Account'}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full editorial-btn-primary py-3 text-sm"
+            >
+              {loading ? 'Creating Patient Account...' : 'Create Patient Account'}
+            </button>
           </form>
 
-          <div className="mt-5 text-center text-sm">
-            <span className="text-gray-500">Already registered? </span>
-            <Link to="/login" className="font-semibold text-blue-600 hover:text-blue-500">
+          <div className="pt-4 border-t border-hairline text-center text-xs text-muted">
+            <span>Already registered? </span>
+            <Link to="/login" className="font-semibold text-cobalt hover:underline">
               Sign In here
             </Link>
           </div>

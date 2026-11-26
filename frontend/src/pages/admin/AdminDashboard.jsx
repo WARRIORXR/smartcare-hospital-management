@@ -56,6 +56,7 @@ const AdminDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditSearch, setAuditSearch] = useState('');
+  const [auditFilter, setAuditFilter] = useState('all'); // 'all' | 'phi' | 'denied'
   const [exportingFormat, setExportingFormat] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -127,6 +128,13 @@ const AdminDashboard = () => {
   };
 
   const filteredAuditLogs = auditLogs.filter((log) => {
+    const act = (log.action || '').toUpperCase();
+    if (auditFilter === 'phi' && !['VIEW', 'CREATE', 'UPDATE', 'DOWNLOAD'].includes(act)) {
+      return false;
+    }
+    if (auditFilter === 'denied' && !act.includes('DENIED') && !act.includes('FAIL')) {
+      return false;
+    }
     if (!auditSearch.trim()) return true;
     const q = auditSearch.toLowerCase();
     return (
@@ -142,19 +150,16 @@ const AdminDashboard = () => {
   const charts = analytics?.charts;
   const lowStockAlerts = analytics?.alerts?.low_blood_stock || [];
 
-  // ─────────────────────────────────────────────
-  // Chart 1: Blood Stock Levels (Bar Chart)
-  // ─────────────────────────────────────────────
+  // Editorial Clinical Chart Palette
   const bloodStockChartData = {
     labels: charts?.blood_stock_levels?.labels || ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'],
     datasets: [
       {
         label: 'Units in Stock',
         data: charts?.blood_stock_levels?.data || [0, 0, 0, 0, 0, 0, 0, 0],
-        backgroundColor: charts?.blood_stock_levels?.colors || '#3b82f6',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#ffffff',
+        backgroundColor: (charts?.blood_stock_levels?.data || []).map((v) => (v < 3 ? '#C82333' : '#1453D6')),
+        borderRadius: 6,
+        borderWidth: 0,
       },
     ],
   };
@@ -168,7 +173,7 @@ const AdminDashboard = () => {
         callbacks: {
           label: (context) => {
             const val = context.raw;
-            return `${val} Units ${val < 3 ? '🚨 (CRITICAL: Below 3 Units)' : '✅ (Safe)'}`;
+            return `${val} Units ${val < 3 ? '(CRITICAL: Below 3 Units)' : '(Safe Reserve)'}`;
           },
         },
       },
@@ -176,31 +181,25 @@ const AdminDashboard = () => {
     scales: {
       y: {
         beginAtZero: true,
-        ticks: { stepSize: 2 },
-        grid: { color: '#f3f4f6' },
+        ticks: { stepSize: 2, color: '#526071', font: { size: 11 } },
+        grid: { color: '#E2E8F0' },
       },
       x: {
+        ticks: { color: '#0B1220', font: { size: 11, weight: 'bold' } },
         grid: { display: false },
       },
     },
   };
 
-  // ─────────────────────────────────────────────
-  // Chart 2: OPD Token Status (Doughnut Chart)
-  // ─────────────────────────────────────────────
   const tokenStatusChartData = {
     labels: charts?.token_status_distribution?.labels || ['Waiting', 'Called / In Progress', 'Completed', 'Admitted', 'Skipped / Cancelled'],
     datasets: [
       {
         data: charts?.token_status_distribution?.data || [0, 0, 0, 0, 0],
-        backgroundColor: charts?.token_status_distribution?.colors || [
-          '#f59e0b',
-          '#3b82f6',
-          '#10b981',
-          '#8b5cf6',
-          '#ef4444',
-        ],
-        hoverOffset: 6,
+        backgroundColor: ['#B45309', '#1453D6', '#0D7A5F', '#0B1220', '#C82333'],
+        borderWidth: 2,
+        borderColor: '#FFFFFF',
+        hoverOffset: 4,
       },
     ],
   };
@@ -211,23 +210,20 @@ const AdminDashboard = () => {
     plugins: {
       legend: {
         position: 'bottom',
-        labels: { boxWidth: 12, font: { size: 11 } },
+        labels: { boxWidth: 10, padding: 14, color: '#526071', font: { size: 11 } },
       },
     },
-    cutout: '65%',
+    cutout: '68%',
   };
 
-  // ─────────────────────────────────────────────
-  // Chart 3: Department Tokens (Bar Chart)
-  // ─────────────────────────────────────────────
   const departmentChartData = {
     labels: charts?.department_tokens?.labels || [],
     datasets: [
       {
         label: 'Patients / Tokens',
         data: charts?.department_tokens?.data || [],
-        backgroundColor: '#6366f1',
-        borderRadius: 8,
+        backgroundColor: '#1453D6',
+        borderRadius: 6,
       },
     ],
   };
@@ -235,38 +231,34 @@ const AdminDashboard = () => {
   const departmentChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-    },
+    plugins: { legend: { display: false } },
     scales: {
       y: {
         beginAtZero: true,
-        ticks: { stepSize: 1 },
-        grid: { color: '#f3f4f6' },
+        ticks: { stepSize: 1, color: '#526071', font: { size: 11 } },
+        grid: { color: '#E2E8F0' },
       },
       x: {
+        ticks: { color: '#526071', font: { size: 11 } },
         grid: { display: false },
       },
     },
   };
 
-  // ─────────────────────────────────────────────
-  // Chart 4: Bed Occupancy by Ward (Stacked Bar)
-  // ─────────────────────────────────────────────
   const wardOccupancyChartData = {
     labels: charts?.ward_occupancy?.labels || [],
     datasets: [
       {
-        label: 'Occupied Beds',
+        label: 'Occupied',
         data: charts?.ward_occupancy?.occupied || [],
-        backgroundColor: '#ef4444',
-        borderRadius: 6,
+        backgroundColor: '#C82333',
+        borderRadius: 4,
       },
       {
-        label: 'Available Beds',
+        label: 'Available',
         data: charts?.ward_occupancy?.available || [],
-        backgroundColor: '#10b981',
-        borderRadius: 6,
+        backgroundColor: '#0D7A5F',
+        borderRadius: 4,
       },
     ],
   };
@@ -277,31 +269,28 @@ const AdminDashboard = () => {
     plugins: {
       legend: {
         position: 'bottom',
-        labels: { boxWidth: 12, font: { size: 11 } },
+        labels: { boxWidth: 10, padding: 14, color: '#526071', font: { size: 11 } },
       },
     },
     scales: {
-      x: { stacked: true, grid: { display: false } },
-      y: { stacked: true, beginAtZero: true, ticks: { stepSize: 2 } },
+      x: { stacked: true, grid: { display: false }, ticks: { color: '#526071', font: { size: 11 } } },
+      y: { stacked: true, beginAtZero: true, ticks: { stepSize: 2, color: '#526071', font: { size: 11 } }, grid: { color: '#E2E8F0' } },
     },
   };
 
-  // ─────────────────────────────────────────────
-  // Chart 5: 7-Day Patient Trend (Line Chart)
-  // ─────────────────────────────────────────────
   const trendChartData = {
     labels: charts?.daily_token_trend?.labels || [],
     datasets: [
       {
         label: 'Daily Tokens',
         data: charts?.daily_token_trend?.data || [],
-        borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.12)',
+        borderColor: '#1453D6',
+        backgroundColor: 'rgba(20, 83, 214, 0.08)',
         fill: true,
         tension: 0.35,
-        pointRadius: 5,
-        pointHoverRadius: 7,
-        pointBackgroundColor: '#8b5cf6',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#1453D6',
       },
     ],
   };
@@ -309,135 +298,140 @@ const AdminDashboard = () => {
   const trendChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-    },
+    plugins: { legend: { display: false } },
     scales: {
       y: {
         beginAtZero: true,
-        ticks: { stepSize: 2 },
-        grid: { color: '#f3f4f6' },
+        ticks: { stepSize: 2, color: '#526071', font: { size: 11 } },
+        grid: { color: '#E2E8F0' },
       },
       x: {
+        ticks: { color: '#526071', font: { size: 11 } },
         grid: { display: false },
       },
     },
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* Admin Header & Live Controls */}
+      {/* Admin Editorial Header & Live Controls */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-indigo-950 rounded-2xl p-6 sm:p-8 text-white shadow-xl border border-purple-900/40">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/30 border border-purple-400/30 text-purple-200 mb-2">
-              <span>📊 Real-Time Operations</span>
-              <span>•</span>
-              <span>SmartCare HMS Analytics</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Hospital Executive Control Center
-            </h1>
-            <p className="mt-1 text-purple-200 text-sm max-w-2xl">
-              Live operational metrics across OPD Token Queues, Inpatient Bed Allocations, and Blood Bank Inventory.
-            </p>
-          </div>
-
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-6 border-b border-hairline">
+        <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handleExportCsv}
-              disabled={exportingFormat === 'csv'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition disabled:opacity-60"
-            >
-              <span>📊</span> {exportingFormat === 'csv' ? 'Exporting...' : t('exportCsv')}
-            </button>
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={exportingFormat === 'pdf'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-sm transition disabled:opacity-60"
-            >
-              <span>📄</span> {exportingFormat === 'pdf' ? 'Exporting...' : t('exportPdf')}
-            </button>
-            <button
-              onClick={() => fetchAnalytics()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-700/60 hover:bg-purple-600 text-white text-xs font-bold border border-purple-500/40 shadow-sm transition"
-              title="Refresh Analytics"
-            >
-              <span>🔄</span> Refresh
-            </button>
-            <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
-                autoRefresh
-                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
-                  : 'bg-gray-800 border-gray-700 text-gray-400'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`}></span>
-              {autoRefresh ? 'Live (15s)' : 'Auto-refresh Off'}
-            </button>
-            <button
-              onClick={() => navigate('/admin/manage')}
-              className="inline-flex items-center px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-md transition"
-            >
-              👨‍⚕️ Doctors & Depts
-            </button>
-            <button
-              onClick={() => navigate('/admin/beds')}
-              className="inline-flex items-center px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition"
-            >
-              🛏️ Beds Grid
-            </button>
-            <button
-              onClick={() => navigate('/bloodbank')}
-              className="inline-flex items-center px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition"
-            >
-              🩸 Blood Bank
-            </button>
+            <span className="editorial-eyebrow">
+              Executive Control · {autoRefresh ? 'Live 15s Sync' : 'Manual Sync'}
+            </span>
+            <span className="font-mono text-[11px] text-muted">
+              Last synced {lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
           </div>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+            Hospital Operations &amp; Audit
+          </h1>
+          <p className="text-xs sm:text-sm text-muted">
+            Signed in as <span className="font-semibold text-ink">{user?.first_name || user?.username}</span>. Real-time metrics across OPD queues, inpatient beds, blood stock, and PHI audit logs.
+          </p>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-purple-800/50 flex flex-wrap items-center justify-between text-xs text-purple-300">
-          <span>Administrator: <strong className="text-white">{user?.first_name || user?.username}</strong></span>
-          <span>Last synced: {lastRefreshed.toLocaleTimeString()}</span>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={exportingFormat === 'csv'}
+            className="editorial-btn-secondary"
+          >
+            {exportingFormat === 'csv' ? 'Exporting...' : t('exportCsv')}
+          </button>
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            disabled={exportingFormat === 'pdf'}
+            className="editorial-btn-secondary"
+          >
+            {exportingFormat === 'pdf' ? 'Exporting...' : t('exportPdf')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`editorial-btn-secondary ${
+              autoRefresh ? 'border-emerald-200 text-clinical-success bg-emerald-50/50' : ''
+            }`}
+          >
+            {autoRefresh ? 'Live (15s)' : 'Paused'}
+          </button>
+          <button
+            type="button"
+            onClick={() => fetchAnalytics()}
+            className="editorial-btn-secondary"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/manage')}
+            className="editorial-btn-primary"
+          >
+            + Provision Staff
+          </button>
         </div>
+      </div>
+
+      {/* Quick Module Shortcuts */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => navigate('/admin/manage')} className="editorial-btn-secondary py-1.5 px-3">
+          Doctors &amp; Clinics
+        </button>
+        <button type="button" onClick={() => navigate('/admin/beds')} className="editorial-btn-secondary py-1.5 px-3">
+          Ward Beds Grid
+        </button>
+        <button type="button" onClick={() => navigate('/bloodbank')} className="editorial-btn-secondary py-1.5 px-3">
+          Blood Bank Inventory
+        </button>
+        <button type="button" onClick={() => navigate('/billing')} className="editorial-btn-secondary py-1.5 px-3">
+          Billing &amp; Invoices
+        </button>
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* Critical Alerts Banner (Blood Stock < 3 Units) */}
       {/* ───────────────────────────────────────────────────────────── */}
       {lowStockAlerts.length > 0 && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">🚨</span>
+        <div className="p-4 sm:p-5 rounded-xl bg-rose-50/70 border border-rose-200 border-l-4 border-l-clinical-danger flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-9 h-9 rounded-lg bg-rose-100 text-clinical-danger flex items-center justify-center shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
             <div>
-              <h3 className="text-sm font-bold text-red-900">
-                Critical Blood Bank Stock Alert ({lowStockAlerts.length} Group{lowStockAlerts.length > 1 ? 's' : ''} Under 3 Units)
+              <h3 className="text-xs sm:text-sm font-bold text-red-900 uppercase tracking-wide">
+                Critical Blood Reserve Alert — {lowStockAlerts.length} Group{lowStockAlerts.length > 1 ? 's' : ''} Below 3 Units
               </h3>
-              <p className="text-xs text-red-700 mt-0.5">
-                Immediate donor outreach recommended for:{' '}
-                <span className="font-bold font-mono">
-                  {lowStockAlerts.map(a => `${a.blood_group} (${a.units_available}u)`).join(', ')}
+              <p className="text-xs text-red-800 mt-0.5">
+                Low stock detected in{' '}
+                <span className="font-mono font-bold">
+                  {lowStockAlerts.map((a) => `${a.blood_group} (${a.units_available}u)`).join(', ')}
                 </span>
+                . Immediate donor outreach recommended.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => navigate('/bloodbank/donors')}
-              className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition shadow-xs"
+              className="px-3.5 py-2 rounded-lg bg-white border border-rose-200 text-clinical-danger hover:bg-rose-50 text-xs font-semibold transition cursor-pointer"
             >
-              📞 Contact Donors
+              Contact Donors
             </button>
             <button
               onClick={() => navigate('/bloodbank')}
-              className="px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700 hover:bg-red-50 text-xs font-bold transition"
+              className="px-3.5 py-2 rounded-lg bg-clinical-danger hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer"
             >
-              Update Units &rarr;
+              Update Stock
             </button>
           </div>
         </div>
@@ -463,144 +457,135 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 5 Primary KPI Cards (Step 14 Requirement) */}
-      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 5 Primary KPI Cards */}
       {analytics && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* KPI 1: Total Tokens Today */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="editorial-card p-5 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tokens Today</span>
-                  <span className="p-2 bg-blue-50 text-blue-600 rounded-xl text-lg">🎟️</span>
+                  <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider">Tokens Today</span>
+                  <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded bg-cobalt-tint text-cobalt">OPD</span>
                 </div>
-                <div className="text-3xl font-extrabold text-gray-900">
+                <div className="font-display text-3xl font-bold text-ink">
                   {kpis?.total_tokens_today ?? 0}
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between text-[11px] text-gray-500">
-                <span className="text-amber-600 font-semibold">⏳ {kpis?.waiting_tokens ?? 0} Wait</span>
-                <span className="text-blue-600 font-semibold">📢 {kpis?.called_tokens ?? 0} In Call</span>
-                <span className="text-emerald-600 font-semibold">✅ {kpis?.completed_tokens ?? 0} Done</span>
+              <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between font-mono text-[10px] text-muted">
+                <span className="text-clinical-warning font-semibold">{kpis?.waiting_tokens ?? 0} Wait</span>
+                <span className="text-cobalt font-semibold">{kpis?.called_tokens ?? 0} Call</span>
+                <span className="text-clinical-success font-semibold">{kpis?.completed_tokens ?? 0} Done</span>
               </div>
             </div>
 
-            {/* KPI 2: Average Waiting Time */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="editorial-card p-5 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Avg Waiting Time</span>
-                  <span className="p-2 bg-amber-50 text-amber-600 rounded-xl text-lg">⏱️</span>
+                  <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider">Avg Wait Time</span>
+                  <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-clinical-warning">SLA</span>
                 </div>
-                <div className="text-3xl font-extrabold text-amber-600">
+                <div className="font-display text-3xl font-bold text-clinical-warning">
                   {kpis?.average_waiting_time_display ?? '15 mins'}
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-50 text-[11px] text-gray-500 flex items-center justify-between">
-                <span>Per patient queue wait</span>
-                <span className="text-emerald-600 font-medium">OPD Standard</span>
+              <div className="mt-3 pt-3 border-t border-hairline text-[11px] text-muted flex items-center justify-between">
+                <span>Per patient wait</span>
+                <span className="text-clinical-success font-semibold">OPD Target</span>
               </div>
             </div>
 
-            {/* KPI 3: Busiest Department */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="editorial-card p-5 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Busiest Dept</span>
-                  <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl text-lg">🏢</span>
+                  <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider">Busiest Dept</span>
+                  <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded bg-surface text-muted border border-hairline">PEAK</span>
                 </div>
-                <div className="text-xl font-extrabold text-indigo-950 truncate" title={kpis?.busiest_department?.name}>
+                <div className="font-display text-xl font-bold text-ink truncate" title={kpis?.busiest_department?.name}>
                   {kpis?.busiest_department?.name || 'General OPD'}
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-50 text-[11px] text-gray-500 flex items-center justify-between">
-                <span>Total Patients:</span>
-                <span className="font-bold text-indigo-600">{kpis?.busiest_department?.tokens_count ?? 0} tokens</span>
+              <div className="mt-3 pt-3 border-t border-hairline text-[11px] text-muted flex items-center justify-between">
+                <span>Volume</span>
+                <span className="font-mono font-bold text-cobalt">{kpis?.busiest_department?.tokens_count ?? 0} tokens</span>
               </div>
             </div>
 
-            {/* KPI 4: Bed Occupancy Percentage */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="editorial-card p-5 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Bed Occupancy</span>
-                  <span className="p-2 bg-purple-50 text-purple-600 rounded-xl text-lg">🛏️</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold text-purple-700">
-                    {kpis?.bed_occupancy_percentage ?? 0}%
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    ({kpis?.occupied_beds ?? 0}/{kpis?.total_beds ?? 0} Beds)
+                  <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider">Bed Occupancy</span>
+                  <span className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded bg-cobalt-tint text-cobalt">
+                    {kpis?.occupied_beds ?? 0}/{kpis?.total_beds ?? 0}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
+                <div className="font-display text-3xl font-bold text-ink">
+                  {kpis?.bed_occupancy_percentage ?? 0}%
+                </div>
+                <div className="w-full bg-surface rounded-full h-1.5 mt-2.5 overflow-hidden">
                   <div
-                    className={`h-2 rounded-full transition-all duration-500 ${
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
                       (kpis?.bed_occupancy_percentage || 0) > 85
-                        ? 'bg-red-500'
+                        ? 'bg-clinical-danger'
                         : (kpis?.bed_occupancy_percentage || 0) > 60
-                        ? 'bg-amber-500'
-                        : 'bg-emerald-500'
+                        ? 'bg-clinical-warning'
+                        : 'bg-cobalt'
                     }`}
                     style={{ width: `${Math.min(100, kpis?.bed_occupancy_percentage || 0)}%` }}
-                  ></div>
+                  />
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-50 text-[11px] text-gray-500 flex items-center justify-between">
-                <span>Available: <strong className="text-emerald-600">{kpis?.available_beds ?? 0}</strong></span>
-                <span>Cleaning: <strong className="text-amber-600">{kpis?.cleaning_beds ?? 0}</strong></span>
+              <div className="mt-3 pt-3 border-t border-hairline text-[11px] text-muted flex items-center justify-between">
+                <span>Free: <strong className="text-clinical-success font-mono">{kpis?.available_beds ?? 0}</strong></span>
+                <span>Clean: <strong className="text-clinical-warning font-mono">{kpis?.cleaning_beds ?? 0}</strong></span>
               </div>
             </div>
 
-            {/* KPI 5: Blood Stock Low Alerts */}
-            <div className={`rounded-2xl p-5 border shadow-sm flex flex-col justify-between ${
-              kpis?.blood_stock_low_alerts?.has_alerts
-                ? 'bg-red-50/50 border-red-200'
-                : 'bg-white border-gray-100'
+            <div className={`editorial-card p-5 flex flex-col justify-between ${
+              kpis?.blood_stock_low_alerts?.has_alerts ? 'border-rose-200 bg-rose-50/40' : ''
             }`}>
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Blood Low Alerts</span>
-                  <span className={`p-2 rounded-xl text-lg ${kpis?.blood_stock_low_alerts?.has_alerts ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                    🩸
+                  <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider">Blood Alerts</span>
+                  <span className={`font-mono text-[10px] font-semibold px-2 py-0.5 rounded ${
+                    kpis?.blood_stock_low_alerts?.has_alerts
+                      ? 'bg-rose-100 text-clinical-danger'
+                      : 'bg-emerald-50 text-clinical-success'
+                  }`}>
+                    {kpis?.blood_stock_low_alerts?.has_alerts ? 'CRITICAL' : 'SAFE'}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-3xl font-extrabold ${kpis?.blood_stock_low_alerts?.has_alerts ? 'text-red-600' : 'text-emerald-600'}`}>
+                  <span className={`font-display text-3xl font-bold ${
+                    kpis?.blood_stock_low_alerts?.has_alerts ? 'text-clinical-danger' : 'text-clinical-success'
+                  }`}>
                     {kpis?.blood_stock_low_alerts?.count ?? 0}
                   </span>
-                  <span className="text-xs text-gray-500">
-                    {kpis?.blood_stock_low_alerts?.has_alerts ? 'Groups < 3 Units' : 'All Groups Safe'}
+                  <span className="text-xs text-muted">
+                    {kpis?.blood_stock_low_alerts?.has_alerts ? 'Groups < 3u' : 'All safe'}
                   </span>
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500 flex items-center justify-between">
-                <span>Total Units: <strong>{kpis?.blood_stock_low_alerts?.total_blood_units ?? 0}u</strong></span>
-                <span className="text-red-600 font-bold">Limit: &lt; 3u</span>
+              <div className="mt-3 pt-3 border-t border-hairline text-[11px] text-muted flex items-center justify-between">
+                <span>Bank Total: <strong className="font-mono text-ink">{kpis?.blood_stock_low_alerts?.total_blood_units ?? 0}u</strong></span>
+                <span className="font-mono text-clinical-danger font-semibold">Min 3u</span>
               </div>
             </div>
           </div>
 
-          {/* ───────────────────────────────────────────────────────────── */}
           {/* Chart.js Visualizations Grid */}
-          {/* ───────────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Chart 1: Blood Bank Stock Distribution with Threshold */}
-            <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+            <div className="lg:col-span-2 editorial-card p-6 flex flex-col">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-5 pb-3 border-b border-hairline">
                 <div>
-                  <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <span>🩸</span> Blood Bank Inventory vs Minimum Safe Threshold
+                  <h3 className="font-display text-base font-bold text-ink">
+                    Blood Bank Inventory vs Safety Floor
                   </h3>
-                  <p className="text-xs text-gray-500">
-                    Red bars highlight units below critical threshold (&lt; 3 units). Green represents safe reserves.
+                  <p className="text-xs text-muted">
+                    Crimson bars highlight blood groups below the 3-unit clinical threshold.
                   </p>
                 </div>
-                <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-700 border border-red-200">
-                  Threshold: 3 Units
+                <span className="font-mono px-2.5 py-1 rounded text-[10px] font-bold bg-rose-50 text-clinical-danger border border-rose-200 uppercase">
+                  Min Threshold: 3u
                 </span>
               </div>
               <div className="h-64 w-full">
@@ -608,14 +593,13 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Chart 2: OPD Token Status Breakdown */}
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col">
-              <div className="mb-4">
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span>🎟️</span> OPD Queue Status Breakdown
+            <div className="editorial-card p-6 flex flex-col">
+              <div className="mb-5 pb-3 border-b border-hairline">
+                <h3 className="font-display text-base font-bold text-ink">
+                  OPD Queue Status Split
                 </h3>
-                <p className="text-xs text-gray-500">
-                  Distribution of today's issued patient tokens by state.
+                <p className="text-xs text-muted">
+                  Today&apos;s patient tokens across clinical workflow stages.
                 </p>
               </div>
               <div className="h-64 w-full flex items-center justify-center">
@@ -625,45 +609,30 @@ const AdminDashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Chart 3: Department OPD Patient Volume */}
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col">
-              <div className="mb-4">
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span>🏢</span> Department Patient Load
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Token volume across departments to identify bottlenecks.
-                </p>
+            <div className="editorial-card p-6 flex flex-col">
+              <div className="mb-5 pb-3 border-b border-hairline">
+                <h3 className="font-display text-base font-bold text-ink">Department Patient Load</h3>
+                <p className="text-xs text-muted">OPD token volume by specialty clinic.</p>
               </div>
               <div className="h-64 w-full">
                 <Bar data={departmentChartData} options={departmentChartOptions} />
               </div>
             </div>
 
-            {/* Chart 4: Ward Bed Occupancy Breakdown */}
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col">
-              <div className="mb-4">
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span>🛏️</span> Ward Bed Capacity & Occupancy
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Occupied (Red) vs Available (Green) beds per ward.
-                </p>
+            <div className="editorial-card p-6 flex flex-col">
+              <div className="mb-5 pb-3 border-b border-hairline">
+                <h3 className="font-display text-base font-bold text-ink">Ward Bed Capacity</h3>
+                <p className="text-xs text-muted">Occupied vs available beds per hospital ward.</p>
               </div>
               <div className="h-64 w-full">
                 <Bar data={wardOccupancyChartData} options={wardOccupancyChartOptions} />
               </div>
             </div>
 
-            {/* Chart 5: 7-Day Patient Token Trend */}
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col">
-              <div className="mb-4">
-                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span>📈</span> 7-Day Patient Volume Trend
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Daily patient traffic flow across the hospital.
-                </p>
+            <div className="editorial-card p-6 flex flex-col">
+              <div className="mb-5 pb-3 border-b border-hairline">
+                <h3 className="font-display text-base font-bold text-ink">7-Day Patient Volume</h3>
+                <p className="text-xs text-muted">Daily outpatient arrivals across all clinics.</p>
               </div>
               <div className="h-64 w-full">
                 <Line data={trendChartData} options={trendChartOptions} />
@@ -671,133 +640,160 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* ───────────────────────────────────────────────────────────── */}
-          {/* Quick Management Module Cards */}
-          {/* ───────────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <span>⚡</span> Quick Management Access
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div
-                onClick={() => navigate('/admin/manage')}
-                className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-purple-50 hover:border-purple-200 cursor-pointer transition"
-              >
-                <div className="text-xl mb-1">👨‍⚕️</div>
-                <h4 className="font-bold text-sm text-gray-900">Doctor & Department CRUD</h4>
-                <p className="text-xs text-gray-500 mt-1">
-                  Add, edit, or remove doctors, consultation times, and departments.
-                </p>
-                <span className="text-xs font-semibold text-purple-600 mt-3 block">
-                  Manage Directory &rarr;
-                </span>
+          {/* Quick Management Access */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              type="button"
+              onClick={() => navigate('/admin/manage')}
+              className="editorial-card-interactive p-5 text-left flex items-start gap-4 cursor-pointer"
+            >
+              <div className="w-10 h-10 rounded-lg bg-cobalt-tint text-cobalt flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
               </div>
+              <div>
+                <h4 className="font-display text-sm font-bold text-ink">Staff &amp; Department CRUD</h4>
+                <p className="text-xs text-muted mt-1">Manage doctors, clinic durations, and role accounts.</p>
+                <span className="text-xs font-semibold text-cobalt mt-2.5 block">Manage Directory →</span>
+              </div>
+            </button>
 
-              <div
-                onClick={() => navigate('/admin/beds')}
-                className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-indigo-50 hover:border-indigo-200 cursor-pointer transition"
-              >
-                <div className="text-xl mb-1">🛏️</div>
-                <h4 className="font-bold text-sm text-gray-900">Inpatient Bed Management</h4>
-                <p className="text-xs text-gray-500 mt-1">
-                  Configure wards (ICU, General, Private), add beds, and monitor live admissions.
-                </p>
-                <span className="text-xs font-semibold text-indigo-600 mt-3 block">
-                  Open Bed Dashboard &rarr;
-                </span>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/beds')}
+              className="editorial-card-interactive p-5 text-left flex items-start gap-4 cursor-pointer"
+            >
+              <div className="w-10 h-10 rounded-lg bg-cobalt-tint text-cobalt flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 4v16" />
+                  <path d="M2 8h18a2 2 0 0 1 2 2v10" />
+                  <path d="M2 17h20" />
+                  <path d="M6 8v9" />
+                </svg>
               </div>
+              <div>
+                <h4 className="font-display text-sm font-bold text-ink">Inpatient Bed Grid</h4>
+                <p className="text-xs text-muted mt-1">Configure ICU/General wards, add beds, monitor admissions.</p>
+                <span className="text-xs font-semibold text-cobalt mt-2.5 block">Open Bed Grid →</span>
+              </div>
+            </button>
 
-              <div
-                onClick={() => navigate('/bloodbank')}
-                className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-rose-50 hover:border-rose-200 cursor-pointer transition"
-              >
-                <div className="text-xl mb-1">🩸</div>
-                <h4 className="font-bold text-sm text-gray-900">Blood Bank Stock & Donors</h4>
-                <p className="text-xs text-gray-500 mt-1">
-                  Track 8 blood groups, register donors, fulfill patient requests, and update expiry dates.
-                </p>
-                <span className="text-xs font-semibold text-rose-600 mt-3 block">
-                  Open Blood Bank &rarr;
-                </span>
+            <button
+              type="button"
+              onClick={() => navigate('/bloodbank')}
+              className="editorial-card-interactive p-5 text-left flex items-start gap-4 cursor-pointer"
+            >
+              <div className="w-10 h-10 rounded-lg bg-rose-50 text-clinical-danger flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+                </svg>
               </div>
-            </div>
+              <div>
+                <h4 className="font-display text-sm font-bold text-ink">Blood Bank Stock &amp; Donors</h4>
+                <p className="text-xs text-muted mt-1">Track 8 ABO/Rh groups, fulfill requests, contact donors.</p>
+                <span className="text-xs font-semibold text-clinical-danger mt-2.5 block">Open Blood Bank →</span>
+              </div>
+            </button>
           </div>
 
-          {/* ───────────────────────────────────────────────────────────── */}
           {/* Security & Clinical Access Audit Log */}
-          {/* ───────────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="editorial-card overflow-hidden">
+            <div className="p-5 sm:p-6 border-b border-hairline flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <span>🛡️</span> {t('auditLogTitle')}
+                <h2 className="font-display text-base font-bold text-ink">
+                  {t('auditLogTitle')}
                 </h2>
-                <p className="text-xs text-gray-500">
-                  Tracks who viewed or modified patient medical records, admissions, billing, and blood requests.
+                <p className="text-xs text-muted mt-0.5">
+                  Immutable trail of PHI record views, token mutations, billing events, and RBAC denials.
                 </p>
               </div>
-              <input
-                type="text"
-                placeholder="Filter by user, action, resource, PAT-ID..."
-                value={auditSearch}
-                onChange={(e) => setAuditSearch(e.target.value)}
-                className="px-3.5 py-2 rounded-xl border border-gray-300 text-xs w-full sm:w-72 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-hairline bg-surface p-0.5 text-[11px] font-semibold">
+                  {[
+                    { id: 'all', label: 'All Events' },
+                    { id: 'phi', label: 'PHI & Mutations' },
+                    { id: 'denied', label: 'Denied' },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setAuditFilter(f.id)}
+                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                        auditFilter === f.id ? 'bg-white text-ink shadow-2xs' : 'text-muted hover:text-ink'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Filter actor, action, PAT-ID..."
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  className="editorial-input py-1.5 px-3 text-xs w-full sm:w-64"
+                />
+              </div>
             </div>
 
             {filteredAuditLogs.length === 0 ? (
-              <p className="text-xs text-gray-400 italic py-6 text-center">No matching audit log events recorded yet.</p>
+              <p className="text-xs text-muted py-10 text-center">No matching audit log events recorded yet.</p>
             ) : (
-              <div className="overflow-x-auto max-h-80 overflow-y-auto border border-gray-100 rounded-xl">
-                <table className="min-w-full text-left text-xs divide-y divide-gray-200">
-                  <thead className="bg-gray-50 text-gray-600 uppercase font-semibold sticky top-0">
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="min-w-full text-left text-xs divide-y divide-hairline">
+                  <thead className="bg-surface text-muted font-mono text-[10px] uppercase tracking-wider font-semibold sticky top-0 border-b border-hairline">
                     <tr>
-                      <th className="px-4 py-2.5">Timestamp</th>
-                      <th className="px-4 py-2.5">Actor</th>
-                      <th className="px-4 py-2.5">Action</th>
-                      <th className="px-4 py-2.5">Resource</th>
-                      <th className="px-4 py-2.5">Patient</th>
-                      <th className="px-4 py-2.5">IP</th>
-                      <th className="px-4 py-2.5">Details</th>
+                      <th className="px-5 py-3">Timestamp</th>
+                      <th className="px-4 py-3">Actor</th>
+                      <th className="px-4 py-3">Action</th>
+                      <th className="px-4 py-3">Resource</th>
+                      <th className="px-4 py-3">Patient</th>
+                      <th className="px-4 py-3">IP</th>
+                      <th className="px-5 py-3">Details</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
+                  <tbody className="divide-y divide-hairline bg-white">
                     {filteredAuditLogs.slice(0, 40).map((log) => (
-                      <tr key={log.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2.5 whitespace-nowrap text-gray-500 font-mono text-[11px]">
-                          {new Date(log.created_at).toLocaleString()}
+                      <tr key={log.id} className="hover:bg-surface/60 transition">
+                        <td className="px-5 py-3 whitespace-nowrap text-muted font-mono text-[11px]">
+                          {new Date(log.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' })}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap">
-                          <span className="font-bold text-gray-900">@{log.actor_username || 'system'}</span>{' '}
-                          <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-semibold text-ink">@{log.actor_username || 'system'}</span>{' '}
+                          <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-surface border border-hairline text-muted">
                             {log.actor_role || '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap">
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            className={`font-mono px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                               log.action === 'VIEW'
-                                ? 'bg-blue-50 text-blue-700'
+                                ? 'bg-cobalt-tint text-cobalt'
                                 : log.action === 'CREATE'
-                                ? 'bg-emerald-50 text-emerald-700'
+                                ? 'bg-emerald-50 text-clinical-success'
                                 : log.action === 'DOWNLOAD'
-                                ? 'bg-amber-50 text-amber-800'
-                                : 'bg-purple-50 text-purple-700'
+                                ? 'bg-amber-50 text-clinical-warning'
+                                : 'bg-rose-50 text-clinical-danger'
                             }`}
                           >
                             {log.action}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap font-medium text-gray-800">
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-ink">
                           {log.resource_type} {log.resource_id ? `#${log.resource_id}` : ''}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap font-mono text-indigo-700 font-bold">
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-cobalt font-semibold">
                           {log.patient_code || '-'}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap font-mono text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-muted">
                           {log.ip_address || '-'}
                         </td>
-                        <td className="px-4 py-2.5 text-gray-600 max-w-xs truncate" title={log.details}>
+                        <td className="px-5 py-3 text-muted max-w-xs truncate" title={log.details}>
                           {log.details}
                         </td>
                       </tr>

@@ -1,23 +1,42 @@
 /* src/index.css
    ---------------
-   Global Minimal Clinical Styling for SmartCare HMS.
+   Editorial Clinical Design System for SmartCare HMS.
 */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-canvas: #FFFFFF;
+  --color-surface: #F6F8FB;
+  --color-border: #E2E8F0;
+  --color-ink: #0B1220;
+  --color-muted: #526071;
+  --color-primary: #1453D6;
+  --color-primary-tint: #EEF4FF;
+  --color-success: #0D7A5F;
+  --color-warning: #B45309;
+  --color-danger: #C82333;
+}
+
 @layer base {
   html {
     @apply antialiased scroll-smooth;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
-  
+
   body {
-    @apply bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    @apply font-sans selection:bg-cobalt-tint selection:text-cobalt tabular-nums;
   }
 
-  /* Refined, minimal custom scrollbar */
+  h1, h2, h3, h4 {
+    @apply font-display tracking-tight;
+    color: var(--color-ink);
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -31,13 +50,68 @@
 }
 
 @layer components {
-  /* Minimal card container */
-  .minimal-card {
-    @apply bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition duration-150;
+  .editorial-card {
+    @apply bg-white rounded-xl border border-hairline transition duration-150;
   }
 
-  /* Minimal badge */
+  .editorial-card-interactive {
+    @apply bg-white rounded-xl border border-hairline transition duration-150 hover:border-cobalt/40 hover:shadow-[0_8px_24px_-8px_rgba(11,18,32,0.08)];
+  }
+
+  .editorial-surface {
+    @apply bg-surface rounded-xl border border-hairline;
+  }
+
+  .editorial-eyebrow {
+    @apply font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-cobalt;
+  }
+
+  .editorial-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-cobalt hover:bg-cobalt-hover text-white text-xs font-semibold transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .editorial-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white hover:bg-surface text-ink border border-hairline text-xs font-semibold transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .editorial-input {
+    @apply w-full px-3.5 py-2.5 text-sm bg-white border border-hairline rounded-lg text-ink placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cobalt/20 focus:border-cobalt transition;
+  }
+
+  .minimal-card {
+    @apply bg-white rounded-xl border border-hairline transition duration-150;
+  }
+
   .minimal-badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+}
+
+select.editorial-input {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 42px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 0.875rem;
+  padding-right: 2.5rem;
+  line-height: 40px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23526071' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+}
+
+select.editorial-input::picker-icon {
+  display: none;
+}
+
+@media print {
+  header, nav, .print-hidden {
+    display: none !important;
   }
 }

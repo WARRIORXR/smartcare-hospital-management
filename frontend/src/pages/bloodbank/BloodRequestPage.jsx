@@ -14,7 +14,6 @@ import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
 import bedService from '../../services/bedService';
 import PatientJourneyModal from '../../components/common/PatientJourneyModal';
-import Navbar from '../../components/common/Navbar';
 import { Link, Navigate } from 'react-router-dom';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
@@ -241,99 +240,83 @@ const BloodRequestPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Navigation Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-6">
-          <Link to="/bloodbank" className="hover:text-rose-600 transition">
-            🩸 Blood Bank Inventory
-          </Link>
-          <span>/</span>
-          <span className="text-gray-900">Blood Requests</span>
-        </div>
-
+    <div className="bg-white">
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Success Alert */}
         {successMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center justify-between shadow-xs animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">✅</span>
-              <span>{successMsg}</span>
-            </div>
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-clinical-success text-xs font-semibold flex items-center justify-between">
+            <span>{successMsg}</span>
             <button
+              type="button"
               onClick={() => setSuccessMsg(null)}
-              className="text-emerald-700 hover:text-emerald-900 font-bold"
+              className="text-clinical-success hover:opacity-75 font-bold cursor-pointer"
             >
-              ✕
+              ×
             </button>
           </div>
         )}
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-sm font-semibold flex items-center justify-between shadow-xs">
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-clinical-danger text-xs font-semibold flex items-center justify-between">
             <span>{errorMsg}</span>
             <button
+              type="button"
               onClick={() => setErrorMsg(null)}
-              className="text-red-700 hover:text-red-900 font-bold"
+              className="text-clinical-danger hover:opacity-75 font-bold cursor-pointer"
             >
-              ✕
+              ×
             </button>
           </div>
         )}
 
-        {/* ── CRITICAL SHORTAGE: MATCHING DONORS DISPLAY ── */}
+        {/* Matching Donors Alert on Critical Shortage */}
         {matchingDonorsAlert && (
-          <div className="mb-8 p-6 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-700 text-white shadow-xl animate-fadeIn">
+          <div className="p-5 sm:p-6 rounded-xl bg-rose-50/70 border border-rose-200 border-l-4 border-l-clinical-danger space-y-4">
             <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <span className="text-4xl">🚨</span>
-                <div>
-                  <h3 className="text-lg font-black uppercase tracking-tight">
-                    Low Stock Alert for {matchingDonorsAlert.blood_group}!
-                  </h3>
-                  <p className="text-rose-100 text-xs sm:text-sm mt-0.5 max-w-2xl">
-                    Blood Bank has only <strong>{matchingDonorsAlert.available_units} unit(s)</strong>{' '}
-                    available, which is below the safe threshold (<span className="underline">less than 3 units</span>).
-                    Below are verified <strong>matching donors</strong> you can call immediately for replacement donation!
-                  </p>
-                </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-red-900 uppercase tracking-wide">
+                  Low Stock Alert for {matchingDonorsAlert.blood_group} — {matchingDonorsAlert.available_units} Unit(s) Left
+                </h3>
+                <p className="text-xs text-red-800 max-w-2xl">
+                  Stock is below the safe reserve threshold (&lt; 3 units). Contact verified matching donors below for immediate replacement donation.
+                </p>
               </div>
               <button
+                type="button"
                 onClick={() => setMatchingDonorsAlert(null)}
-                className="text-white hover:text-rose-200 font-bold text-lg"
+                className="text-red-800 hover:opacity-75 font-bold text-base cursor-pointer"
               >
-                ✕
+                ×
               </button>
             </div>
 
-            {/* Matching Donors List Cards */}
-            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {matchingDonorsAlert.donors.map((donor) => (
                 <div
                   key={donor.id}
-                  className="bg-white/95 backdrop-blur-xs text-gray-900 p-4 rounded-2xl shadow-sm border border-rose-200 flex flex-col justify-between"
+                  className="bg-white text-ink p-4 rounded-xl border border-rose-200 flex flex-col justify-between gap-3"
                 >
                   <div>
                     <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-lg bg-rose-600 text-white font-black text-xs">
+                      <span className="px-2 py-0.5 rounded bg-clinical-danger text-white font-mono font-bold text-xs">
                         {donor.blood_group}
                       </span>
-                      <span className="text-2xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        Ready to Donate
+                      <span className="font-mono text-[10px] font-semibold text-clinical-success bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        Eligible
                       </span>
                     </div>
-
-                    <h4 className="font-extrabold text-sm text-gray-900 mt-2">{donor.name}</h4>
-                    <p className="text-xs text-gray-500">📍 City: {donor.city || 'Local'}</p>
+                    <h4 className="font-semibold text-sm text-ink mt-2">{donor.name}</h4>
+                    <p className="text-xs text-muted">{donor.city || 'Local City'}</p>
                   </div>
 
-                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
-                    <span className="font-mono font-bold text-xs text-blue-700">{donor.phone}</span>
+                  <div className="pt-2.5 border-t border-hairline flex items-center justify-between">
+                    <span className="font-mono font-bold text-xs text-cobalt">{donor.phone}</span>
                     <a
                       href={`tel:${donor.phone}`}
-                      className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition"
+                      className="px-3 py-1.5 rounded-lg bg-clinical-danger hover:opacity-95 text-white text-xs font-semibold transition"
                     >
-                      📞 Call Donor
+                      Call Donor
                     </a>
                   </div>
                 </div>
@@ -342,36 +325,39 @@ const BloodRequestPage = () => {
           </div>
         )}
 
-        {/* Hero Banner */}
-        <div className="bg-gradient-to-r from-red-800 via-rose-800 to-rose-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div>
-            <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-xs mb-3">
-              🩸 Emergency Blood Requests
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              Request Blood Units for Inpatient / Emergency
+        {/* Editorial Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-hairline">
+          <div className="space-y-1.5">
+            <span className="editorial-eyebrow">Blood Requisition · Stock Cross-Check</span>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+              Emergency &amp; Planned Blood Requests
             </h1>
-            <p className="text-rose-200 text-xs sm:text-sm mt-1 max-w-xl">
-              Patients and Doctors can request blood units with urgency levels. The system cross-checks
-              live stock and automatically surfaces matching donors when supply is low.
+            <p className="text-xs sm:text-sm text-muted max-w-2xl">
+              Submit blood requests with urgency levels. Automatically checks live stock and surfaces eligible donors when inventory is critical.
             </p>
           </div>
 
-          <Link
-            to="/bloodbank/donors"
-            className="px-5 py-2.5 rounded-2xl bg-white text-rose-800 hover:bg-rose-50 text-xs font-black uppercase tracking-wider shadow-md transition self-start md:self-auto"
-          >
-            👥 Voluntary Donors Directory →
-          </Link>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {isMedicalStaff && (
+              <>
+                <Link to="/bloodbank/stock" className="editorial-btn-secondary">
+                  Live Stock
+                </Link>
+                <Link to="/bloodbank/donors" className="editorial-btn-primary">
+                  Donor Registry →
+                </Link>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── LEFT: BLOOD REQUEST FORM ── */}
-          <div className="bg-white rounded-3xl border border-gray-200/90 p-6 sm:p-8 shadow-xs lg:col-span-1">
-            <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
-              <span>📝</span> Submit Blood Request
+          <div className="editorial-surface p-6 lg:col-span-1">
+            <h2 className="font-display text-base font-bold text-ink">
+              Submit Blood Request
             </h2>
-            <p className="text-xs text-gray-500 mt-1 mb-6">
+            <p className="text-xs text-muted mt-1 mb-5">
               Urgency levels: Normal, Urgent, or Emergency.
             </p>
 
@@ -557,18 +543,18 @@ const BloodRequestPage = () => {
           </div>
 
           {/* ── RIGHT: ACTIVE BLOOD REQUESTS LEDGER ── */}
-          <div className="bg-white rounded-3xl border border-gray-200/90 p-6 sm:p-8 shadow-xs lg:col-span-2 flex flex-col justify-between">
+          <div className="editorial-card p-6 lg:col-span-2 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between pb-6 border-b border-gray-100">
+              <div className="flex items-center justify-between pb-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                    <span>📋</span> Hospital Blood Requests
+                  <h2 className="font-display text-base font-bold text-ink">
+                    Hospital Blood Requests
                   </h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Live patient blood requests with urgency levels and allocation status.
+                  <p className="text-xs text-muted mt-0.5">
+                    Live blood requisitions with urgency levels, live stock check, and fulfillment status.
                   </p>
                 </div>
-                <span className="px-3 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold">
+                <span className="font-mono px-2.5 py-1 rounded bg-surface border border-hairline text-ink text-xs font-semibold">
                   {requests.length} Total
                 </span>
               </div>
@@ -576,23 +562,22 @@ const BloodRequestPage = () => {
               {/* Requests Table */}
               {loading ? (
                 <div className="py-20 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600 mx-auto"></div>
-                  <p className="mt-3 text-xs text-gray-500 font-semibold">Loading requests...</p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cobalt mx-auto"></div>
+                  <p className="mt-3 text-xs text-muted font-medium">Loading requests...</p>
                 </div>
               ) : requests.length === 0 ? (
-                <div className="p-12 text-center text-gray-500">
-                  <span className="text-4xl block mb-2">🩸</span>
-                  <p className="font-bold text-sm">No Blood Requests</p>
-                  <p className="text-xs text-gray-400 mt-1">
+                <div className="p-12 text-center text-muted">
+                  <p className="font-display font-bold text-sm text-ink">No Blood Requests</p>
+                  <p className="text-xs text-muted mt-1">
                     There are no active blood requests in the system.
                   </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto mt-4">
-                  <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-                    <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold tracking-wider">
+                  <table className="min-w-full divide-y divide-hairline text-left text-xs">
+                    <thead className="bg-surface text-muted uppercase font-mono text-[10px] font-semibold tracking-wider border-b border-hairline">
                       <tr>
-                        <th className="px-4 py-3">Group & Units</th>
+                        <th className="px-4 py-3">Group &amp; Units</th>
                         <th className="px-4 py-3">Patient / Ward</th>
                         <th className="px-4 py-3">Urgency</th>
                         <th className="px-4 py-3">Status</th>
@@ -600,36 +585,33 @@ const BloodRequestPage = () => {
                         {isMedicalStaff && <th className="px-4 py-3 text-right">Staff Action</th>}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-hairline bg-white">
                       {requests.map((req) => (
-                        <tr key={req.id} className="hover:bg-gray-50/70 transition">
-                          <td className="px-4 py-3">
+                        <tr key={req.id} className="hover:bg-surface/60 transition">
+                          <td className="px-4 py-3.5">
                             <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-1 rounded-xl bg-rose-100 text-rose-800 font-black text-xs">
+                              <span className="px-2.5 py-0.5 rounded bg-rose-50 text-clinical-danger border border-rose-200 font-mono font-bold text-xs">
                                 {req.blood_group}
                               </span>
-                              <strong className="text-gray-900 text-sm">
-                                x{req.units_required} unit(s)
+                              <strong className="font-mono text-ink text-xs">
+                                ×{req.units_required}u
                               </strong>
                             </div>
                           </td>
 
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-900">{req.patient_name}</span>
+                              <span className="font-semibold text-ink">{req.patient_name}</span>
                               {req.patient_code && (
-                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-cobalt-tint text-cobalt">
                                   {req.patient_code}
                                 </span>
                               )}
                             </div>
-                            <div className="text-2xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <span>Ward: {req.hospital_ward || 'Not specified'}</span>
-                              <span>•</span>
-                              <span>By: {req.requested_by_name}</span>
+                            <div className="text-[11px] text-muted mt-0.5">
+                              {req.hospital_ward || 'General Ward'} · By {req.requested_by_name}
                             </div>
-                            {/* Cross-Module Quick Links */}
-                            <div className="flex items-center gap-1.5 mt-1.5">
+                            <div className="flex items-center gap-2 mt-1.5">
                               {req.patient_id && (
                                 <button
                                   type="button"
@@ -637,27 +619,25 @@ const BloodRequestPage = () => {
                                     setJourneyPatientId(req.patient_id);
                                     setJourneyModalOpen(true);
                                   }}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] border border-indigo-200 transition"
-                                  title="View Unified Patient Journey across OPD, Beds, and Blood Bank"
+                                  className="text-[11px] font-semibold text-cobalt hover:underline cursor-pointer"
                                 >
-                                  <span>📜</span> Journey
+                                  Care Timeline
                                 </button>
                               )}
                               <Link
                                 to="/beds"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[10px] border border-purple-200 transition"
-                                title="Open Bed & Ward Management"
+                                className="text-[11px] font-semibold text-muted hover:text-ink hover:underline"
                               >
-                                <span>🛏️</span> Ward
+                                Ward Grid
                               </Link>
                             </div>
                           </td>
 
-                          <td className="px-4 py-3">{getPriorityBadge(req.priority)}</td>
+                          <td className="px-4 py-3.5">{getPriorityBadge(req.priority)}</td>
 
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5">
                             <span
-                              className={`px-2.5 py-0.5 rounded-full text-2xs font-bold border ${getStatusBadge(
+                              className={`font-mono px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${getStatusBadge(
                                 req.status
                               )}`}
                             >
@@ -665,42 +645,42 @@ const BloodRequestPage = () => {
                             </span>
                           </td>
 
-                          <td className="px-4 py-3 text-xs">
+                          <td className="px-4 py-3.5 text-xs">
                             {req.is_stock_low ? (
-                              <span className="text-red-600 font-bold flex items-center gap-1">
-                                <span>⚠️</span>
-                                <span>Stock Low ({req.available_units_now})</span>
+                              <span className="font-mono text-clinical-danger font-semibold">
+                                Low ({req.available_units_now}u)
                               </span>
                             ) : (
-                              <span className="text-emerald-700 font-semibold">
-                                ✅ Sufficient ({req.available_units_now})
+                              <span className="font-mono text-clinical-success font-semibold">
+                                Safe ({req.available_units_now}u)
                               </span>
                             )}
                           </td>
 
                           {isMedicalStaff && (
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-4 py-3.5 text-right">
                               {req.status === 'pending' && (
                                 <div className="flex justify-end gap-1.5">
                                   <button
+                                    type="button"
                                     onClick={() => handleUpdateStatus(req.id, 'fulfilled')}
                                     disabled={updatingId === req.id}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-2xs transition"
-                                    title="Fulfill and allocate blood units"
+                                    className="px-2.5 py-1 rounded-lg bg-clinical-success hover:opacity-95 disabled:opacity-50 text-white font-semibold text-[11px] transition cursor-pointer"
                                   >
                                     {updatingId === req.id ? '...' : 'Fulfill'}
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => handleUpdateStatus(req.id, 'rejected')}
                                     disabled={updatingId === req.id}
-                                    className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-600 font-bold text-xs transition"
+                                    className="px-2.5 py-1 rounded-lg bg-surface hover:bg-slate-200 border border-hairline disabled:opacity-50 text-muted font-semibold text-[11px] transition cursor-pointer"
                                   >
                                     Reject
                                   </button>
                                 </div>
                               )}
                               {req.status === 'fulfilled' && (
-                                <span className="text-2xs font-bold text-emerald-700">Fulfilled ✓</span>
+                                <span className="font-mono text-[10px] font-bold uppercase text-clinical-success">Fulfilled ✓</span>
                               )}
                             </td>
                           )}
@@ -712,15 +692,15 @@ const BloodRequestPage = () => {
               )}
             </div>
 
-            <div className="mt-6 pt-4 border-t border-gray-100 text-2xs text-gray-500 flex items-center justify-between">
+            <div className="mt-6 pt-4 border-t border-hairline text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
               <span>Urgency Levels: Emergency (Immediate), Urgent (2 hrs), Normal</span>
-              <Link to="/bloodbank" className="text-rose-600 hover:underline font-bold">
+              <Link to="/bloodbank" className="text-cobalt hover:underline font-semibold">
                 Check Live Blood Stock Inventory →
               </Link>
             </div>
           </div>
         </div>
-      </main>
+      </div>
 
       {/* ── Cross-Module Unified Patient Journey Modal ── */}
       <PatientJourneyModal

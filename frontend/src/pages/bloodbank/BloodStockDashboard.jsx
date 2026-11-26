@@ -16,7 +16,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
-import Navbar from '../../components/common/Navbar';
 
 // Clinical description of each blood group
 const BLOOD_GROUP_INFO = {
@@ -174,150 +173,132 @@ const BloodStockDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="bg-white">
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Success Alert Banner */}
         {successMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center justify-between shadow-xs transition-all animate-fadeIn">
-            <div className="flex items-center space-x-2">
-              <span className="text-lg">✅</span>
-              <span>{successMsg}</span>
-            </div>
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-clinical-success text-xs font-semibold flex items-center justify-between">
+            <span>{successMsg}</span>
             <button
+              type="button"
               onClick={() => setSuccessMsg(null)}
-              className="text-emerald-700 hover:text-emerald-900 font-bold"
+              className="text-clinical-success hover:opacity-75 font-bold cursor-pointer"
             >
-              ✕
+              ×
             </button>
           </div>
         )}
 
-        {/* ── RED ALERT BANNER (If any stock < 3 units) ── */}
+        {/* Critical Blood Reserve Banner */}
         {summary.has_red_alert && (
-          <div className="mb-8 p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-rose-700 text-white shadow-xl animate-pulse">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start sm:items-center gap-3">
-                <span className="text-3xl sm:text-4xl">🚨</span>
-                <div>
-                  <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight">
-                    Critical Red Alert: Emergency Blood Shortage!
-                  </h3>
-                  <p className="text-rose-100 text-xs sm:text-sm mt-0.5">
-                    <strong>{summary.critical_count} blood group(s)</strong> have fallen below safe
-                    reserve (<span className="underline font-bold">less than 3 units</span>):{' '}
-                    <strong className="text-white text-base">
-                      {summary.critical_groups.join(', ')}
-                    </strong>
-                  </p>
-                </div>
-              </div>
-
-              {canManage && (
-                <button
-                  onClick={() =>
-                    handleOpenUpdate(summary.critical_groups[0] || 'O-', 'add')
-                  }
-                  className="px-5 py-2.5 rounded-2xl bg-white text-red-700 hover:bg-red-50 text-xs font-black uppercase tracking-wider shadow-md transition self-start sm:self-center"
-                >
-                  + Add Emergency Units Now
-                </button>
-              )}
+          <div className="p-4 sm:p-5 rounded-xl bg-rose-50/80 border border-rose-200 border-l-4 border-l-clinical-danger flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-xs sm:text-sm font-bold text-red-900 uppercase tracking-wide">
+                Critical Red Alert — {summary.critical_count} Blood Group(s) Below 3 Units
+              </h3>
+              <p className="text-xs text-red-800">
+                Low inventory detected in{' '}
+                <span className="font-mono font-bold">{summary.critical_groups.join(', ')}</span>. Add incoming batches or contact matching donors.
+              </p>
             </div>
+
+            {canManage && (
+              <div className="flex items-center gap-2 shrink-0">
+                <Link to="/bloodbank/donors" className="editorial-btn-secondary border-rose-200 text-clinical-danger">
+                  Contact Donors
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => handleOpenUpdate(summary.critical_groups[0] || 'O-', 'add')}
+                  className="px-4 py-2 rounded-lg bg-clinical-danger hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer"
+                >
+                  + Add Emergency Units
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── Title & Global Controls ── */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl">🩸</span>
-              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
-                Blood Bank Stock & Inventory
-              </h1>
-            </div>
-            <p className="mt-1 text-sm text-gray-500">
-              Real-time units monitoring across all 8 ABO/Rh blood groups with expiry tracking.
+        {/* Editorial Header & Connected Module Tabs */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-hairline">
+          <div className="space-y-1.5">
+            <span className="editorial-eyebrow">Blood Bank Operations · Live 5s Inventory</span>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+              Blood Bank Stock &amp; Inventory
+            </h1>
+            <p className="text-xs sm:text-sm text-muted">
+              Real-time unit monitoring across all 8 ABO/Rh blood groups with batch expiry tracking.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Auto-Refresh Toggle */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Link to="/bloodbank/requests" className="editorial-btn-secondary">
+              Requests Queue
+            </Link>
+            <Link to="/bloodbank/donors" className="editorial-btn-secondary">
+              Donor Registry
+            </Link>
             <button
+              type="button"
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs font-bold transition border shadow-2xs ${
-                autoRefresh
-                  ? 'bg-rose-600 text-white border-rose-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              className={`editorial-btn-secondary ${
+                autoRefresh ? 'border-emerald-200 text-clinical-success bg-emerald-50/50' : ''
               }`}
             >
-              <span
-                className={`w-2 h-2 rounded-full mr-2 ${
-                  autoRefresh ? 'bg-white animate-ping' : 'bg-gray-400'
-                }`}
-              />
-              {autoRefresh ? 'Live Polling (5s)' : 'Auto-Refresh: Off'}
+              {autoRefresh ? 'Live (5s)' : 'Paused'}
             </button>
-
-            {/* Manual Refresh */}
             <button
+              type="button"
               onClick={() => fetchStock(true)}
               disabled={refreshing}
-              className="inline-flex items-center px-3.5 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-2xs transition"
-              title="Refresh inventory now"
+              className="editorial-btn-secondary"
             >
-              <span className={`mr-1.5 ${refreshing ? 'animate-spin' : ''}`}>🔄</span>
               Refresh
             </button>
-
-            {/* Staff Add/Update Units Button */}
             {canManage && (
               <button
+                type="button"
                 onClick={() => handleOpenUpdate('O-', 'add')}
-                className="inline-flex items-center px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-md transition"
+                className="editorial-btn-primary"
               >
-                <span className="mr-1 text-sm">+</span> Add / Update Units
+                + Add / Update Units
               </button>
             )}
           </div>
         </div>
 
-        {/* ── Summary Counters ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-2xs">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
+        {/* Summary Counters */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="editorial-card p-5">
+            <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider block">
               Total Units In Bank
             </span>
-            <p className="text-3xl font-black text-gray-900 mt-2">{summary.total_units} Units</p>
-            <p className="text-xs text-gray-500 mt-1 font-medium">8 ABO/Rh Groups Tracked</p>
+            <p className="font-display text-3xl font-bold text-ink mt-1.5">{summary.total_units} Units</p>
+            <p className="text-xs text-muted mt-1">8 ABO/Rh Groups Tracked</p>
           </div>
 
           <div
-            className={`p-5 rounded-2xl border shadow-2xs ${
-              summary.critical_count > 0
-                ? 'bg-red-50/80 border-red-300 text-red-900'
-                : 'bg-white border-gray-200/90 text-gray-900'
+            className={`editorial-card p-5 ${
+              summary.critical_count > 0 ? 'bg-rose-50/60 border-rose-200' : ''
             }`}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider">Critical Deficit (&lt; 3)</span>
-              {summary.critical_count > 0 && (
-                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
-              )}
-            </div>
+            <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider block">
+              Critical Deficit (&lt; 3)
+            </span>
             <p
-              className={`text-3xl font-black mt-2 ${
-                summary.critical_count > 0 ? 'text-red-600' : 'text-gray-900'
+              className={`font-display text-3xl font-bold mt-1.5 ${
+                summary.critical_count > 0 ? 'text-clinical-danger' : 'text-ink'
               }`}
             >
               {summary.critical_count} Groups
             </p>
-            <p className="text-xs text-red-700 mt-1 font-semibold">
-              {summary.critical_count > 0 ? '🚨 Immediate Donors Needed' : 'All groups safe (≥ 3)'}
+            <p className={`text-xs mt-1 font-medium ${summary.critical_count > 0 ? 'text-clinical-danger' : 'text-clinical-success'}`}>
+              {summary.critical_count > 0 ? 'Immediate Donors Needed' : 'All groups safe (≥ 3)'}
             </p>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-2xs">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
+          <div className="editorial-card p-5">
+            <span className="font-mono text-[10px] font-semibold text-muted uppercase tracking-wider block">
               Red Alert Threshold
             </span>
             <p className="text-3xl font-black text-gray-900 mt-2">&lt; 3 Units</p>
@@ -335,63 +316,48 @@ const BloodStockDashboard = () => {
           </div>
         </div>
 
-        {/* ── Tab Switcher: Cards View vs Batch Log vs Donors vs Requests ── */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-3 mb-6">
+        {/* Tab Switcher */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-hairline pb-3">
           <button
+            type="button"
             onClick={() => setActiveViewTab('cards')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
               activeViewTab === 'cards'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-cobalt text-white border-cobalt'
+                : 'bg-white text-muted border-hairline hover:text-ink hover:bg-surface'
             }`}
           >
-            <span>🩸</span>
-            <span>Live Stock Cards (8 Groups)</span>
+            Live Stock Cards (8 Groups)
           </button>
 
-          <Link
-            to="/bloodbank/donors"
-            className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-gray-700 hover:bg-gray-100 bg-white border border-gray-200 shadow-2xs"
-          >
-            <span>👥</span>
-            <span>Register as Donor / Directory</span>
-          </Link>
-
-          <Link
-            to="/bloodbank/requests"
-            className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-gray-700 hover:bg-gray-100 bg-white border border-gray-200 shadow-2xs"
-          >
-            <span>📋</span>
-            <span>Request Blood Units</span>
-          </Link>
-
           <button
+            type="button"
             onClick={() => setActiveViewTab('batches')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
               activeViewTab === 'batches'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-cobalt text-white border-cobalt'
+                : 'bg-white text-muted border-hairline hover:text-ink hover:bg-surface'
             }`}
           >
-            <span>📦</span>
-            <span>Batch & Expiry Ledger ({batches.length})</span>
+            Batch &amp; Expiry Ledger ({batches.length})
           </button>
         </div>
 
-        {/* ── 8 LIVE STOCK CARDS (A+, A-, B+, B-, O+, O-, AB+, AB-) ── */}
+        {/* 8 Live ABO/Rh Stock Cards */}
         {loading ? (
           <div className="py-20 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600 mx-auto"></div>
-            <p className="mt-4 text-sm text-gray-500 font-semibold">
+            <div className="animate-spin rounded-full h-9 w-9 border-b-2 border-cobalt mx-auto"></div>
+            <p className="mt-4 text-xs text-muted font-medium">
               Loading live blood inventory...
             </p>
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-3xl p-8 text-center text-red-700">
-            <p className="font-bold text-base">{error}</p>
+          <div className="p-6 bg-rose-50 border border-rose-200 rounded-xl text-center text-clinical-danger">
+            <p className="font-semibold text-sm">{error}</p>
             <button
+              type="button"
               onClick={() => fetchStock()}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition"
+              className="mt-3 px-4 py-2 bg-clinical-danger text-white rounded-lg text-xs font-semibold cursor-pointer"
             >
               Retry
             </button>
@@ -402,108 +368,115 @@ const BloodStockDashboard = () => {
               const isRedAlert = item.units_available < 3;
               const info = BLOOD_GROUP_INFO[item.blood_group] || {};
               const daysLeft = item.days_until_expiry;
+              const fillPct = Math.min(100, Math.round((item.units_available / 10) * 100));
 
               return (
                 <div
                   key={item.blood_group}
-                  className={`rounded-3xl p-6 transition-all relative flex flex-col justify-between ${
+                  className={`editorial-card p-5 flex flex-col justify-between transition ${
                     isRedAlert
-                      ? 'bg-gradient-to-br from-rose-50 via-red-50/70 to-red-100/50 border-2 border-red-500 shadow-md shadow-red-100/60 ring-2 ring-red-400/20'
-                      : 'bg-white border border-gray-200/90 shadow-2xs hover:shadow-md'
+                      ? 'border-clinical-danger/60 bg-rose-50/40'
+                      : 'hover:border-cobalt/40'
                   }`}
                 >
-                  {/* Top Bar: Group Name & Alert Badge */}
-                  <div>
-                    <div className="flex items-start justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-4xl font-black text-gray-900 tracking-tight block">
+                        <span className="font-mono text-3xl font-bold text-ink tracking-tight block">
                           {item.blood_group}
                         </span>
-                        <span className="text-xs font-semibold text-gray-500 block mt-0.5">
+                        <span className="text-xs text-muted block mt-0.5">
                           {info.label || item.blood_group_display}
                         </span>
                       </div>
 
-                      {/* Red Alert Pill if < 3 Units */}
                       {isRedAlert ? (
-                        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider shadow-xs animate-bounce">
-                          <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-                          <span>&lt; 3 RED ALERT</span>
-                        </div>
+                        <span className="font-mono px-2 py-0.5 rounded bg-clinical-danger text-white text-[10px] font-bold uppercase tracking-wider shrink-0">
+                          &lt; 3u Critical
+                        </span>
                       ) : (
-                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300">
+                        <span className="font-mono px-2 py-0.5 rounded bg-emerald-50 text-clinical-success text-[10px] font-semibold border border-emerald-200 shrink-0">
                           Adequate
                         </span>
                       )}
                     </div>
 
-                    {/* Units Counter */}
-                    <div className="my-5">
-                      <div className="flex items-baseline space-x-2">
+                    {/* Units Counter & Safety Gauge */}
+                    <div className="space-y-2">
+                      <div className="flex items-baseline gap-2">
                         <span
-                          className={`text-4xl sm:text-5xl font-black tracking-tight ${
-                            isRedAlert ? 'text-red-700' : 'text-gray-900'
+                          className={`font-display text-3xl font-bold tracking-tight ${
+                            isRedAlert ? 'text-clinical-danger' : 'text-ink'
                           }`}
                         >
                           {item.units_available}
                         </span>
-                        <span className="text-sm font-bold text-gray-500 uppercase">
-                          Units in Stock
+                        <span className="font-mono text-[11px] font-semibold text-muted uppercase">
+                          Units Available
                         </span>
                       </div>
 
+                      <div className="w-full h-1.5 rounded-full bg-surface border border-hairline overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isRedAlert ? 'bg-clinical-danger' : 'bg-cobalt'
+                          }`}
+                          style={{ width: `${fillPct}%` }}
+                        />
+                      </div>
+
                       {isRedAlert && (
-                        <p className="mt-1.5 text-xs font-bold text-red-700 flex items-center gap-1">
-                          <span>⚠️</span>
-                          <span>Critical deficit! Requires urgent donor replenishment.</span>
+                        <p className="text-[11px] font-semibold text-clinical-danger">
+                          Below 3-unit safety floor. Urgent donor replenishment needed.
                         </p>
                       )}
                     </div>
 
-                    {/* Compatibility Info */}
-                    <div className="p-3 bg-gray-50/80 rounded-2xl border border-gray-100 text-2xs space-y-1 mb-4">
-                      <p className="text-gray-600 font-medium">
-                        <strong>Match:</strong> {info.badge}
+                    {/* Match Profile */}
+                    <div className="p-3 bg-surface rounded-lg border border-hairline text-[11px] space-y-1">
+                      <p className="text-muted">
+                        <strong className="text-ink">Match:</strong> {info.badge}
                       </p>
-                      <span className="inline-block px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-500 font-semibold">
+                      <span className="inline-block font-mono text-[10px] text-cobalt font-semibold">
                         {info.tag}
                       </span>
                     </div>
                   </div>
 
-                  {/* Bottom: Expiry Date & Quick Action */}
-                  <div className="pt-3 border-t border-gray-100/90 flex flex-col gap-3">
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>Nearest Expiry:</span>
-                      <strong
-                        className={`font-semibold ${
-                          daysLeft !== null && daysLeft <= 7 ? 'text-red-600 font-bold' : 'text-gray-800'
+                  {/* Bottom: Expiry Date & Quick Actions */}
+                  <div className="mt-4 pt-3.5 border-t border-hairline flex flex-col gap-3">
+                    <div className="flex items-center justify-between text-xs text-muted">
+                      <span>Nearest Expiry</span>
+                      <span
+                        className={`font-mono font-semibold ${
+                          daysLeft !== null && daysLeft <= 7 ? 'text-clinical-danger' : 'text-ink'
                         }`}
                       >
                         {item.expiry_date
                           ? `${item.expiry_date} (${
                               daysLeft !== null
                                 ? daysLeft > 0
-                                  ? `${daysLeft}d left`
+                                  ? `${daysLeft}d`
                                   : 'Expired'
                                 : ''
                             })`
                           : 'Not recorded'}
-                      </strong>
+                      </span>
                     </div>
 
-                    {/* Quick Update Button */}
                     {canManage && (
                       <div className="grid grid-cols-2 gap-2">
                         <button
+                          type="button"
                           onClick={() => handleOpenUpdate(item.blood_group, 'add')}
-                          className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition text-center"
+                          className="editorial-btn-primary py-1.5 px-2 text-[11px]"
                         >
                           + Add Units
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleOpenUpdate(item.blood_group, 'set')}
-                          className="py-2 px-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold text-xs border border-gray-200 transition text-center"
+                          className="editorial-btn-secondary py-1.5 px-2 text-[11px]"
                         >
                           Set / Edit
                         </button>
@@ -515,19 +488,20 @@ const BloodStockDashboard = () => {
             })}
           </div>
         ) : (
-          /* ── BATCH LEDGER TABLE ── */
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-2xs overflow-hidden">
-            <div className="px-6 py-4 bg-gray-50/70 border-b border-gray-200 flex items-center justify-between">
+          /* Batch Ledger Table */
+          <div className="editorial-card overflow-hidden">
+            <div className="px-6 py-4 bg-surface border-b border-hairline flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-900">Logged Blood Unit Batches</h3>
-                <p className="text-xs text-gray-500">
-                  Individual blood units stored with expiration deadlines.
+                <h3 className="font-display text-base font-bold text-ink">Logged Blood Unit Batches</h3>
+                <p className="text-xs text-muted">
+                  Individual blood units tracked with batch codes and expiration dates.
                 </p>
               </div>
               {canManage && (
                 <button
+                  type="button"
                   onClick={() => handleOpenUpdate('O-', 'add')}
-                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 shadow-2xs transition"
+                  className="editorial-btn-primary py-1.5 px-3"
                 >
                   + Log Batch
                 </button>
@@ -535,51 +509,49 @@ const BloodStockDashboard = () => {
             </div>
 
             {batches.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <span className="text-4xl block mb-2">📦</span>
-                <p className="font-bold text-sm">No Batch Records Yet</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Use the "+ Add / Update Units" button above to log newly collected blood bags with
-                  expiry dates.
+              <div className="p-12 text-center text-muted">
+                <p className="font-display font-bold text-sm text-ink">No Batch Records Yet</p>
+                <p className="text-xs text-muted mt-1">
+                  Use &ldquo;+ Add / Update Units&rdquo; above to log incoming blood bags with expiry dates.
                 </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold tracking-wider">
+                <table className="min-w-full divide-y divide-hairline text-left text-xs">
+                  <thead className="bg-surface text-muted uppercase font-mono text-[10px] font-semibold tracking-wider border-b border-hairline">
                     <tr>
                       <th className="px-6 py-3.5">Batch Code</th>
-                      <th className="px-6 py-3.5">Blood Group</th>
-                      <th className="px-6 py-3.5">Units</th>
-                      <th className="px-6 py-3.5">Expiry Date</th>
-                      <th className="px-6 py-3.5">Donor / Source</th>
+                      <th className="px-4 py-3.5">Blood Group</th>
+                      <th className="px-4 py-3.5">Units</th>
+                      <th className="px-4 py-3.5">Expiry Date</th>
+                      <th className="px-4 py-3.5">Donor / Source</th>
                       <th className="px-6 py-3.5">Logged By</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-hairline bg-white">
                     {batches.map((b) => (
-                      <tr key={b.id} className="hover:bg-gray-50/80 transition">
-                        <td className="px-6 py-4 font-mono font-bold text-gray-900">
+                      <tr key={b.id} className="hover:bg-surface/60 transition">
+                        <td className="px-6 py-4 font-mono font-bold text-ink">
                           {b.batch_number || `BATCH-${b.id}`}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 font-extrabold text-xs">
+                        <td className="px-4 py-4">
+                          <span className="px-2.5 py-0.5 rounded bg-rose-50 text-clinical-danger border border-rose-200 font-mono font-bold text-xs">
                             {b.blood_group}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-bold text-gray-900">{b.units} Bags</td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-800">{b.expiry_date}</div>
-                          <span className="text-2xs text-gray-500 font-medium">
+                        <td className="px-4 py-4 font-mono font-bold text-ink">{b.units} Bags</td>
+                        <td className="px-4 py-4">
+                          <div className="font-mono font-semibold text-ink">{b.expiry_date}</div>
+                          <span className="text-[11px] text-muted">
                             {b.days_until_expiry !== null && b.days_until_expiry > 0
-                              ? `Expires in ${b.days_until_expiry} days`
+                              ? `${b.days_until_expiry} days left`
                               : 'Expired'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-xs text-gray-600">
+                        <td className="px-4 py-4 text-xs text-muted">
                           {b.donor_name || 'Hospital Donation Drive'}
                         </td>
-                        <td className="px-6 py-4 text-xs text-gray-500">
+                        <td className="px-6 py-4 text-xs text-muted">
                           {b.recorded_by_name || 'Staff'}
                         </td>
                       </tr>
@@ -590,28 +562,31 @@ const BloodStockDashboard = () => {
             )}
           </div>
         )}
-      </main>
+      </div>
 
-      {/* ── MODAL: ADD / UPDATE BLOOD UNITS WITH EXPIRY DATE ── */}
+      {/* Modal: Add / Update Blood Units */}
       {showUpdateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                <span>🩸</span> Add / Update Blood Units
-              </h3>
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="editorial-card max-w-md w-full p-6 sm:p-7 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-hairline">
+              <div>
+                <span className="editorial-eyebrow">Inventory Update</span>
+                <h3 className="font-display text-lg font-bold text-ink mt-0.5">
+                  Add / Update Blood Units
+                </h3>
+              </div>
               <button
+                type="button"
                 onClick={() => setShowUpdateModal(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-lg"
+                className="text-muted hover:text-ink font-bold text-xl cursor-pointer"
               >
-                ✕
+                ×
               </button>
             </div>
 
             <form onSubmit={handleFormSubmit} className="mt-5 space-y-4">
-              {/* Select Blood Group */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                <label className="block text-xs font-semibold text-ink mb-1.5">
                   Blood Group *
                 </label>
                 <select
@@ -619,7 +594,7 @@ const BloodStockDashboard = () => {
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, blood_group: e.target.value })
                   }
-                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white font-bold"
+                  className="editorial-input font-mono font-bold"
                 >
                   {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((bg) => (
                     <option key={bg} value={bg}>
@@ -629,19 +604,18 @@ const BloodStockDashboard = () => {
                 </select>
               </div>
 
-              {/* Action: Add vs Set vs Deduct */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                <label className="block text-xs font-semibold text-ink mb-1.5">
                   Operation Action *
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setUpdateForm({ ...updateForm, action: 'add' })}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
+                    className={`py-2 px-3 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                       updateForm.action === 'add'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-white text-gray-700 border-gray-300'
+                        ? 'bg-clinical-success text-white border-clinical-success'
+                        : 'bg-white text-muted border-hairline'
                     }`}
                   >
                     + Add Units
@@ -650,10 +624,10 @@ const BloodStockDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setUpdateForm({ ...updateForm, action: 'set' })}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
+                    className={`py-2 px-3 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                       updateForm.action === 'set'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white text-gray-700 border-gray-300'
+                        ? 'bg-cobalt text-white border-cobalt'
+                        : 'bg-white text-muted border-hairline'
                     }`}
                   >
                     Set Total
@@ -662,10 +636,10 @@ const BloodStockDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setUpdateForm({ ...updateForm, action: 'deduct' })}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
+                    className={`py-2 px-3 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                       updateForm.action === 'deduct'
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                        : 'bg-white text-gray-700 border-gray-300'
+                        ? 'bg-clinical-danger text-white border-clinical-danger'
+                        : 'bg-white text-muted border-hairline'
                     }`}
                   >
                     - Deduct
@@ -673,9 +647,8 @@ const BloodStockDashboard = () => {
                 </div>
               </div>
 
-              {/* Units Input */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                <label className="block text-xs font-semibold text-ink mb-1.5">
                   Quantity (Units / Bags) *
                 </label>
                 <input
@@ -686,16 +659,15 @@ const BloodStockDashboard = () => {
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, units: e.target.value })
                   }
-                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 font-bold"
+                  className="editorial-input font-mono font-bold"
                 />
-                <span className="text-2xs text-gray-500 mt-0.5 block">
+                <span className="text-[11px] text-muted mt-1 block">
                   1 unit ≈ 450 ml of whole blood.
                 </span>
               </div>
 
-              {/* Mandatory Expiry Date */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                <label className="block text-xs font-semibold text-ink mb-1.5">
                   Expiry Date *
                 </label>
                 <input
@@ -705,16 +677,15 @@ const BloodStockDashboard = () => {
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, expiry_date: e.target.value })
                   }
-                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="editorial-input"
                 />
-                <span className="text-2xs text-gray-500 mt-0.5 block">
+                <span className="text-[11px] text-muted mt-1 block">
                   Default: 35 days shelf-life at 2°C–6°C.
                 </span>
               </div>
 
-              {/* Donor Name (optional) */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                <label className="block text-xs font-semibold text-ink mb-1.5">
                   Donor / Camp Source (Optional)
                 </label>
                 <input
@@ -724,25 +695,24 @@ const BloodStockDashboard = () => {
                   onChange={(e) =>
                     setUpdateForm({ ...updateForm, donor_name: e.target.value })
                   }
-                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="editorial-input"
                 />
               </div>
 
-              {/* Footer Actions */}
-              <div className="pt-4 flex justify-end gap-2 border-t border-gray-100">
+              <div className="pt-4 flex justify-end gap-2 border-t border-hairline">
                 <button
                   type="button"
                   onClick={() => setShowUpdateModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition"
+                  className="editorial-btn-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={modalLoading}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition disabled:opacity-50"
+                  className="editorial-btn-primary px-5"
                 >
-                  Save Stock & Expiry
+                  Save Stock &amp; Expiry
                 </button>
               </div>
             </form>

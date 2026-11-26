@@ -2,12 +2,11 @@
  * src/pages/billing/BillingPage.jsx
  * ---------------------------------
  * Module 5: Hospital Invoices, OPD + Ward Charge Calculation & PDF Receipt Downloads.
- *  - Patients view & pay only their own invoices and download PDF receipts.
- *  - Reception / Doctors / Admins generate itemized invoices from tokens or admissions.
+ * Supports URL pre-filling via ?patient=<id>&token=<id>&new=1 from Doctor & Reception workflows.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import clinicalService from '../../services/clinicalService';
@@ -17,30 +16,49 @@ import opdService from '../../services/opdService';
 const BillingPage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const isAuthorizedBilling = Boolean(
     isAuthenticated && user && ['patient', 'reception', 'doctor', 'admin'].includes(user.role)
   );
   const isStaff = ['reception', 'doctor', 'admin'].includes(user?.role) || user?.is_staff;
 
+  const urlPatientId = searchParams.get('patient') || '';
+  const urlTokenId = searchParams.get('token') || '';
+  const urlOpenNew = searchParams.get('new') === '1';
+
   const [invoices, setInvoices] = useState([]);
   const [patients, setPatients] = useState([]);
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [payingId, setPayingId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'unpaid' | 'paid'
+  const [paymentMethod, setPaymentMethod] = useState('upi');
   const [msg, setMsg] = useState({ type: '', text: '' });
   const actionRef = useRef(false);
 
   const [showGenModal, setShowGenModal] = useState(false);
   const [genForm, setGenForm] = useState({
-    patient_id: '',
-    token_id: '',
+    patient_id: urlPatientId,
+    token_id: urlTokenId,
     extraDesc: '',
     extraPrice: '',
     discount_amount: '0',
     notes: '',
   });
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isStaff && (urlPatientId || urlTokenId)) {
+      setGenForm((prev) => ({
+        ...prev,
+        patient_id: urlPatientId || prev.patient_id,
+        token_id: urlTokenId || prev.token_id,
+      }));
+      if (urlOpenNew) setShowGenModal(true);
+    }
+  }, [isStaff, urlPatientId, urlTokenId, urlOpenNew]);
 
   const loadData = useCallback(async () => {
     try {
@@ -68,7 +86,7 @@ const BillingPage = () => {
     loadData();
   }, [isAuthorizedBilling, loadData]);
 
-  if (authLoading) return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  if (authLoading) return <div className="p-8 text-center text-muted text-sm">Checking authorization...</div>;
   if (!isAuthorizedBilling) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -79,7 +97,7 @@ const BillingPage = () => {
     setPayingId(invId);
     try {
       await clinicalService.payInvoice(invId, method);
-      setMsg({ type: 'success', text: `Invoice paid cleanly via ${method.toUpperCase()}. You may now download the paid PDF receipt.` });
+      setMsg({ type: 'success', text: `Invoice settled cleanly via ${method.toUpperCase()}. PDF receipt is ready.` });
       await loadData();
     } catch (err) {
       setMsg({ type: 'error', text: err.response?.data?.detail || 'Payment failed.' });
@@ -111,7 +129,7 @@ const BillingPage = () => {
             : [],
       };
       await clinicalService.generateInvoice(payload);
-      setMsg({ type: 'success', text: 'Invoice generated with PDF receipt ready.' });
+      setMsg({ type: 'success', text: 'Invoice generated with official PDF receipt ready.' });
       setShowGenModal(false);
       setGenForm({ patient_id: '', token_id: '', extraDesc: '', extraPrice: '', discount_amount: '0', notes: '' });
       await loadData();
@@ -123,31 +141,100 @@ const BillingPage = () => {
     }
   };
 
+  const paidTotal = invoices.filter((i) => i.status === 'paid').reduce((s, i) => s + Number(i.total_amount || 0), 0);
+  const unpaidTotal = invoices.filter((i) => i.status !== 'paid').reduce((s, i) => s + Number(i.total_amount || 0), 0);
+  const filteredInvoices = invoices.filter((i) => {
+    if (statusFilter === 'paid') return i.status === 'paid';
+    if (statusFilter === 'unpaid') return i.status !== 'paid';
+    return true;
+  });
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">💳 {t('billingTitle')}</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Automated OPD consultation & ward occupancy billing with official PDF receipt downloads.
+    <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header Strip */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-hairline">
+        <div className="space-y-1.5">
+          <span className="editorial-eyebrow">Financial Desk · Itemized OPD &amp; Ward Billing</span>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">{t('billingTitle')}</h1>
+          <p className="text-xs sm:text-sm text-muted">
+            Automated OPD consultation &amp; ward occupancy billing with official downloadable PDF receipts.
           </p>
         </div>
         {isStaff && (
           <button
-            onClick={() => setShowGenModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+            type="button"
+            onClick={() => navigate('/billing/new')}
+            className="editorial-btn-primary shrink-0"
           >
             + Generate New Invoice
           </button>
         )}
       </div>
 
+      {/* Summary KPI Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="editorial-card p-5">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">Total Invoices</span>
+          <p className="font-display text-2xl font-bold text-ink mt-1">{invoices.length}</p>
+        </div>
+        <div className="editorial-card p-5">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">Paid &amp; Settled</span>
+          <p className="font-mono text-2xl font-bold text-clinical-success mt-1">₹{paidTotal.toFixed(2)}</p>
+        </div>
+        <div className="editorial-card p-5">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">Pending Balance</span>
+          <p className="font-mono text-2xl font-bold text-clinical-warning mt-1">₹{unpaidTotal.toFixed(2)}</p>
+        </div>
+      </div>
+
+      {/* Filter Tabs & Payment Mode */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-3">
+        <div className="flex items-center gap-2">
+          {[
+            { id: 'all', label: `All Invoices (${invoices.length})` },
+            { id: 'unpaid', label: `Unpaid (${invoices.filter((i) => i.status !== 'paid').length})` },
+            { id: 'paid', label: `Paid (${invoices.filter((i) => i.status === 'paid').length})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setStatusFilter(tab.id)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                statusFilter === tab.id
+                  ? 'bg-cobalt text-white border-cobalt'
+                  : 'bg-white border-hairline text-muted hover:text-ink hover:bg-surface'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-mono text-[10px] font-semibold uppercase text-muted">Method:</span>
+          {['upi', 'card', 'cash'].map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setPaymentMethod(m)}
+              className={`px-2.5 py-1 rounded-md font-mono text-[11px] font-semibold uppercase border transition cursor-pointer ${
+                paymentMethod === m
+                  ? 'bg-surface border-cobalt text-cobalt'
+                  : 'bg-white border-hairline text-muted hover:text-ink'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {msg.text && (
         <div
-          className={`mb-5 p-3.5 rounded-xl text-xs font-semibold border ${
+          className={`p-3.5 rounded-xl text-xs font-semibold border ${
             msg.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-rose-50 border-rose-200 text-rose-700'
+              ? 'bg-emerald-50 border-emerald-200 text-clinical-success'
+              : 'bg-rose-50 border-rose-200 text-clinical-danger'
           }`}
         >
           {msg.text}
@@ -155,52 +242,52 @@ const BillingPage = () => {
       )}
 
       {loading ? (
-        <div className="py-16 text-center text-slate-400 text-sm">Loading invoices...</div>
-      ) : invoices.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 text-sm">
-          No invoices found.
+        <div className="py-16 text-center text-muted text-sm">Loading invoices...</div>
+      ) : filteredInvoices.length === 0 ? (
+        <div className="editorial-card p-12 text-center text-muted text-sm">
+          No invoices found for this filter.
         </div>
       ) : (
         <div className="space-y-4">
-          {invoices.map((inv) => (
-            <div key={inv.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-              <div className="flex flex-wrap justify-between items-start gap-4 border-b border-slate-100 pb-4 mb-4">
+          {filteredInvoices.map((inv) => (
+            <div key={inv.id} className="editorial-card p-6">
+              <div className="flex flex-wrap justify-between items-start gap-4 border-b border-hairline pb-4 mb-4">
                 <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-mono font-bold text-sm text-slate-900">{inv.invoice_number}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-bold text-sm text-ink">{inv.invoice_number}</span>
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                      className={`font-mono px-2.5 py-0.5 rounded text-[10px] font-bold uppercase border ${
                         inv.status === 'paid'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          ? 'bg-emerald-50 text-clinical-success border-emerald-200'
+                          : 'bg-amber-50 text-clinical-warning border-amber-200'
                       }`}
                     >
                       {inv.status}
                     </span>
                     {inv.token_code && (
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-mono text-[11px]">
+                      <span className="px-2 py-0.5 rounded bg-cobalt-tint text-cobalt font-mono text-[10px] font-semibold">
                         Token {inv.token_code}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Patient: <strong className="text-slate-700">{inv.patient_name}</strong> ({inv.patient_code}) •{' '}
-                    {new Date(inv.created_at).toLocaleString()}
+                  <p className="text-xs text-muted mt-1">
+                    Patient: <strong className="text-ink">{inv.patient_name}</strong>{' '}
+                    <span className="font-mono">({inv.patient_code})</span> · {new Date(inv.created_at).toLocaleString()}
                   </p>
                 </div>
 
                 <div className="text-right">
-                  <p className="text-xs text-slate-400 uppercase font-semibold">Total Amount</p>
-                  <p className="text-2xl font-black text-slate-900 font-mono">₹{inv.total_amount}</p>
+                  <p className="font-mono text-[10px] text-muted uppercase font-semibold">Total Amount</p>
+                  <p className="font-mono text-2xl font-bold text-ink">₹{inv.total_amount}</p>
                 </div>
               </div>
 
               <div className="space-y-1.5 mb-4">
                 {(inv.items || []).map((item) => (
-                  <div key={item.id} className="flex justify-between text-xs text-slate-700 bg-slate-50 px-3 py-2 rounded-lg">
+                  <div key={item.id} className="flex justify-between text-xs text-ink bg-surface px-3.5 py-2 rounded-lg border border-hairline">
                     <span>
                       <strong>{item.description}</strong>{' '}
-                      <span className="text-slate-400">({item.category_display} × {item.quantity})</span>
+                      <span className="text-muted">({item.category_display} × {item.quantity})</span>
                     </span>
                     <span className="font-mono font-semibold">₹{item.line_total}</span>
                   </div>
@@ -208,24 +295,26 @@ const BillingPage = () => {
               </div>
 
               <div className="flex flex-wrap justify-between items-center gap-3 pt-2">
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted">
                   {inv.status === 'paid' ? `Paid via ${(inv.payment_method || 'UPI').toUpperCase()}` : inv.notes || 'Pending settlement'}
                 </span>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   {inv.status === 'unpaid' && (
                     <button
-                      onClick={() => handlePay(inv.id, 'upi')}
+                      type="button"
+                      onClick={() => handlePay(inv.id, paymentMethod)}
                       disabled={payingId === inv.id}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                      className="px-3.5 py-2 rounded-lg bg-clinical-success hover:opacity-95 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
                     >
-                      {payingId === inv.id ? 'Processing...' : `💳 ${t('payNow')} (UPI)`}
+                      {payingId === inv.id ? 'Processing...' : `${t('payNow')} (${paymentMethod.toUpperCase()})`}
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => clinicalService.downloadInvoicePdf(inv.id, inv.invoice_number)}
-                    className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                    className="editorial-btn-secondary py-2 px-3.5"
                   >
-                    📄 {t('downloadPdf')}
+                    {t('downloadPdf')} ↓
                   </button>
                 </div>
               </div>
@@ -235,19 +324,19 @@ const BillingPage = () => {
       )}
 
       {showGenModal && isStaff && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-900">Generate Hospital Invoice</h3>
-              <button onClick={() => setShowGenModal(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">×</button>
+        <div className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="editorial-card max-w-md w-full p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-hairline">
+              <h3 className="font-display text-lg font-bold text-ink">Generate Hospital Invoice</h3>
+              <button type="button" onClick={() => setShowGenModal(false)} className="text-muted hover:text-ink text-xl font-bold cursor-pointer">×</button>
             </div>
             <form onSubmit={handleGenerate} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Link Today's OPD Token (Optional)</label>
+                <label className="block text-xs font-semibold text-ink mb-1">Link Today&apos;s OPD Token (Optional)</label>
                 <select
                   value={genForm.token_id}
                   onChange={(e) => setGenForm({ ...genForm, token_id: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
+                  className="editorial-input"
                 >
                   <option value="">-- Optional Token --</option>
                   {tokens.map((tok) => (
@@ -258,12 +347,12 @@ const BillingPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Or Select Patient *</label>
+                <label className="block text-xs font-semibold text-ink mb-1">Or Select Patient *</label>
                 <select
                   required={!genForm.token_id}
                   value={genForm.patient_id}
                   onChange={(e) => setGenForm({ ...genForm, patient_id: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
+                  className="editorial-input"
                 >
                   <option value="">Select Patient</option>
                   {patients.map((p) => (
@@ -273,56 +362,56 @@ const BillingPage = () => {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Extra Service</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Extra Service</label>
                   <input
                     type="text"
                     value={genForm.extraDesc}
                     onChange={(e) => setGenForm({ ...genForm, extraDesc: e.target.value })}
-                    placeholder="e.g. ECG / Blood Test"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl"
+                    placeholder="e.g. ECG / Lab Test"
+                    className="editorial-input text-xs"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Amount (INR)</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Amount (INR)</label>
                   <input
                     type="number"
                     min="0"
                     value={genForm.extraPrice}
                     onChange={(e) => setGenForm({ ...genForm, extraPrice: e.target.value })}
                     placeholder="350"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl"
+                    className="editorial-input text-xs"
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Discount (INR)</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Discount (INR)</label>
                   <input
                     type="number"
                     min="0"
                     value={genForm.discount_amount}
                     onChange={(e) => setGenForm({ ...genForm, discount_amount: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl"
+                    className="editorial-input text-xs"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Notes</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Notes</label>
                   <input
                     type="text"
                     value={genForm.notes}
                     onChange={(e) => setGenForm({ ...genForm, notes: e.target.value })}
                     placeholder="Optional note"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl"
+                    className="editorial-input text-xs"
                   />
                 </div>
               </div>
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setShowGenModal(false)} className="px-4 py-2 text-xs text-slate-600 rounded-xl hover:bg-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-hairline">
+                <button type="button" onClick={() => setShowGenModal(false)} className="editorial-btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" disabled={submitting} className="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">
+                <button type="submit" disabled={submitting} className="editorial-btn-primary px-5">
                   {submitting ? 'Creating...' : 'Create Invoice'}
                 </button>
               </div>

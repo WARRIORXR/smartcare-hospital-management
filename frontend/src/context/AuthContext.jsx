@@ -112,9 +112,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    const accessToken = localStorage.getItem('smartcare_access_token');
     const refreshToken = localStorage.getItem('smartcare_refresh_token');
     if (refreshToken) {
-      authService.logout(refreshToken).catch(() => {});
+      authService.logout(refreshToken, accessToken).catch(() => {});
     }
     localStorage.removeItem('smartcare_access_token');
     localStorage.removeItem('smartcare_refresh_token');

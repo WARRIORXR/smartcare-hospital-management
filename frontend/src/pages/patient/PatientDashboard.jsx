@@ -1,9 +1,11 @@
 /**
  * src/pages/patient/PatientDashboard.jsx
  * --------------------------------------
- * Dashboard specifically designed for Patients.
- * Displays patient details, patient ID, live 5s proximity alerts (SMS / WhatsApp / In-App),
- * integrated journey modal (Modules 1-5), and quick actions across all hospital modules.
+ * Editorial Clinical Patient Portal:
+ *  - Clean Header Strip with Patient ID & Book OPD Token / Care Journey CTAs
+ *  - Asymmetric 2-Column Workspace:
+ *    Left: Live Active OPD Pass (5s auto-refresh) + Care & Records Modules
+ *    Right: Patient Profile table + Live Proximity Alerts Feed (SMS / WhatsApp)
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -20,22 +22,26 @@ const PatientDashboard = () => {
   const navigate = useNavigate();
 
   const [profile, setProfile] = useState(null);
+  const [activeToken, setActiveToken] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Live Proximity Notifications State (5s polling)
   const [notifications, setNotifications] = useState([]);
   const [notifLoading, setNotifLoading] = useState(false);
-
-  // Unified Journey Modal State
   const [journeyModalOpen, setJourneyModalOpen] = useState(false);
 
-  const loadNotifications = useCallback(async () => {
+  const loadLivePatientState = useCallback(async () => {
     try {
-      const data = await opdService.getNotifications();
-      const list = Array.isArray(data) ? data : data?.results || [];
-      setNotifications(list);
+      const [notifData, tokensData] = await Promise.all([
+        opdService.getNotifications(),
+        opdService.getMyTokens().catch(() => []),
+      ]);
+      const notifList = Array.isArray(notifData) ? notifData : notifData?.results || [];
+      setNotifications(notifList);
+
+      const tokenList = Array.isArray(tokensData) ? tokensData : tokensData?.results || [];
+      const live = tokenList.find((tk) => ['waiting', 'called', 'in_progress'].includes(tk.status));
+      setActiveToken(live || null);
     } catch (err) {
-      console.error('Could not fetch notifications', err);
+      console.error('Could not fetch live patient updates', err);
     }
   }, []);
 
@@ -51,17 +57,16 @@ const PatientDashboard = () => {
       } finally {
         setLoading(false);
       }
-      await loadNotifications();
+      await loadLivePatientState();
     };
 
     fetchInitial();
-    const intervalId = setInterval(loadNotifications, 5000);
+    const intervalId = setInterval(loadLivePatientState, 5000);
     return () => clearInterval(intervalId);
-  }, [isAuthenticated, user, loadNotifications]);
+  }, [isAuthenticated, user, loadLivePatientState]);
 
-  // Defensive Guard: Only Patients can access Patient Portal
   if (authLoading) {
-    return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+    return <div className="p-8 text-center text-muted text-sm">Checking authorization...</div>;
   }
   if (!isAuthenticated || !user || user.role !== 'patient') {
     return <Navigate to="/dashboard" replace />;
@@ -71,7 +76,7 @@ const PatientDashboard = () => {
     try {
       setNotifLoading(true);
       await opdService.markNotificationRead(id);
-      await loadNotifications();
+      await loadLivePatientState();
     } catch (err) {
       console.error('Failed to mark notification read', err);
     } finally {
@@ -83,7 +88,7 @@ const PatientDashboard = () => {
     try {
       setNotifLoading(true);
       await opdService.markAllNotificationsRead();
-      await loadNotifications();
+      await loadLivePatientState();
     } catch (err) {
       console.error('Failed to mark all notifications read', err);
     } finally {
@@ -93,303 +98,345 @@ const PatientDashboard = () => {
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const resolvedPatientId = profile?.id || user?.patient_id_pk || user?.id;
+  const displayPatientCode = loading ? '...' : profile?.patient_id || user?.patient_id || 'PAT-0001';
 
-  const openJourneyModal = () => {
-    setJourneyModalOpen(true);
-  };
+  const modules = [
+    {
+      title: 'OPD Tokens & Advance Slots',
+      desc: 'Book same-day queue tokens, select advance time slots, and browse doctor availability.',
+      action: 'Book Now',
+      path: '/patient/book-token',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      ),
+    },
+    {
+      title: t('medicalRecordsTitle'),
+      desc: 'Review doctor prescriptions, visit notes, diagnoses, and uploaded lab reports.',
+      action: 'Open',
+      path: '/records',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+      ),
+    },
+    {
+      title: t('billingTitle'),
+      desc: 'Inspect itemized OPD & ward invoices, settle balances, and download PDF receipts.',
+      action: 'View',
+      path: '/billing',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+          <line x1="1" y1="10" x2="23" y2="10" />
+        </svg>
+      ),
+    },
+    {
+      title: 'Doctor Directory & Ratings',
+      desc: 'Find specialist clinics, room numbers, consultation fees, and submit visit ratings.',
+      action: 'Browse',
+      path: '/patient/doctors',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      ),
+    },
+    {
+      title: 'Emergency Blood Requisition',
+      desc: 'Submit urgent or planned blood unit requests and track blood bank fulfillment.',
+      action: 'Request',
+      path: '/bloodbank/requests',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+        </svg>
+      ),
+    },
+  ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Welcome Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-6 sm:p-8 text-white shadow-lg mb-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/40 border border-emerald-300/30">
-                👤 {t('patientPortal')}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 border border-white/20 text-emerald-50">
-                <span className="w-2 h-2 rounded-full bg-lime-300 animate-pulse"></span>
-                {t('liveQueueActive')}
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              {t('welcome')}, {user?.first_name || user?.username}!
-            </h1>
-            <p className="mt-1 text-emerald-100 text-sm">
-              Manage your OPD tokens, bed status, clinical records, invoices, and proximity alerts in one place.
-            </p>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm px-5 py-3 rounded-xl border border-white/20 text-center">
-            <span className="block text-xs uppercase tracking-wider text-emerald-200">Patient ID</span>
-            <span className="text-lg font-bold font-mono text-white">
-              {loading ? '...' : profile?.patient_id || user?.patient_id || 'PAT-0001'}
+    <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header Strip */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-hairline">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="editorial-eyebrow">{t('patientPortal')}</span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-clinical-success border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-clinical-success animate-pulse" />
+              {t('liveQueueActive')}
             </span>
           </div>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+            {t('welcome')}, {user?.first_name || user?.username}
+          </h1>
+          <p className="text-sm text-muted">
+            Track your live OPD queue pass, prescriptions, lab reports, and billing under ID{' '}
+            <span className="font-mono font-semibold text-ink">{displayPatientCode}</span>.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => navigate('/patient/journey')}
+            className="editorial-btn-secondary"
+          >
+            View Care Journey
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/patient/book-slot')}
+            className="editorial-btn-primary"
+          >
+            + {t('navBookToken')}
+          </button>
         </div>
       </div>
 
-      {/* Patient Vitals & Info Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-          <p className="text-xs font-medium text-gray-500 uppercase">Blood Group</p>
-          <p className="text-xl font-bold text-red-600 mt-1">
-            {profile?.blood_group || user?.blood_group || 'Not Specified'}
-          </p>
-        </div>
+      {/* Main 2-Column Asymmetric Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+        {/* Left Primary Column */}
+        <div className="space-y-6">
+          {/* Active OPD Pass Hero Card */}
+          {activeToken ? (
+            <div className="editorial-card p-6 border-cobalt/30 bg-gradient-to-br from-white to-cobalt-tint/30 space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-cobalt text-white">
+                      LIVE OPD PASS
+                    </span>
+                    <span className="font-mono text-[11px] font-semibold text-clinical-success uppercase">
+                      {activeToken.status?.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="font-mono text-3xl sm:text-4xl font-bold text-ink tracking-tight pt-1">
+                    {activeToken.token_code}
+                  </p>
+                  <p className="text-sm text-muted">
+                    {activeToken.doctor_name} · {activeToken.department_name || 'Outpatient Clinic'}
+                    {activeToken.room_number ? ` · Room ${activeToken.room_number}` : ''}
+                  </p>
+                </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-          <p className="text-xs font-medium text-gray-500 uppercase">Gender</p>
-          <p className="text-xl font-bold text-gray-800 mt-1">
-            {profile?.gender === 'M' ? 'Male' : profile?.gender === 'F' ? 'Female' : 'Other'}
-          </p>
-        </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/patient/tokens')}
+                    className="editorial-btn-primary"
+                  >
+                    Open QR Pass
+                  </button>
+                </div>
+              </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-          <p className="text-xs font-medium text-gray-500 uppercase">Registered Mobile</p>
-          <p className="text-xl font-bold text-gray-800 mt-1">
-            {user?.phone || 'Not set'}
-          </p>
-        </div>
+              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-hairline">
+                <div>
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">Tokens Ahead</p>
+                  <p className="font-display text-xl font-bold text-ink mt-0.5">
+                    {activeToken.tokens_ahead ?? 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">Est. Wait</p>
+                  <p className="font-display text-xl font-bold text-cobalt mt-0.5">
+                    ~{activeToken.estimated_wait_minutes ?? (activeToken.tokens_ahead ?? 0) * 10}m
+                  </p>
+                </div>
+                <div>
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">Priority</p>
+                  <p className="font-display text-xl font-bold text-ink capitalize mt-0.5">
+                    {activeToken.priority || 'Normal'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="editorial-card p-6 bg-surface/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="editorial-eyebrow">No Active OPD Token</p>
+                <h2 className="font-display text-lg font-bold text-ink">
+                  Ready to schedule your next consultation?
+                </h2>
+                <p className="text-xs text-muted">
+                  Check real-time doctor queue lengths and book a walk-in token or advance time slot.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => navigate('/patient/tokens')}
+                  className="editorial-btn-secondary"
+                >
+                  {t('navMyPasses')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/patient/book-token')}
+                  className="editorial-btn-primary"
+                >
+                  {t('navBookToken')}
+                </button>
+              </div>
+            </div>
+          )}
 
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-          <p className="text-xs font-medium text-gray-500 uppercase">Portal Status</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span className="text-sm font-semibold text-emerald-700">Active</span>
+          {/* Care & Records Modules */}
+          <div className="editorial-card overflow-hidden">
+            <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+              <h2 className="font-display text-base font-bold text-ink">Care &amp; Records Modules</h2>
+              <span className="font-mono text-[11px] text-muted">5 INTEGRATED SERVICES</span>
+            </div>
+
+            <div className="divide-y divide-hairline">
+              {modules.map((mod) => (
+                <div
+                  key={mod.path}
+                  className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-surface/60 transition"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-cobalt-tint text-cobalt flex items-center justify-center shrink-0">
+                      {mod.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-ink truncate">{mod.title}</h3>
+                      <p className="text-xs text-muted truncate sm:whitespace-normal">{mod.desc}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate(mod.path)}
+                    className="editorial-btn-secondary shrink-0 px-3.5 py-2"
+                  >
+                    {mod.action} →
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Live Queue Proximity Notifications (SMS / WhatsApp / In-App) */}
-      <div className={`rounded-2xl p-5 mb-8 border shadow-sm transition ${unreadCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">🔔</span>
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-gray-900 flex items-center gap-2">
-                {t('notificationsTitle')}
+        {/* Right Rail */}
+        <aside className="space-y-6">
+          {/* Patient Profile Summary */}
+          <div className="editorial-card overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between bg-surface/60">
+              <h2 className="font-display text-sm font-bold text-ink">Patient Profile</h2>
+              <span className="font-mono text-[11px] font-semibold text-cobalt">{displayPatientCode}</span>
+            </div>
+            <div className="divide-y divide-hairline text-xs">
+              <div className="px-5 py-3 flex items-center justify-between">
+                <span className="text-muted">Blood Group</span>
+                <span className="font-mono font-bold text-clinical-danger">
+                  {profile?.blood_group || user?.blood_group || 'Not Set'}
+                </span>
+              </div>
+              <div className="px-5 py-3 flex items-center justify-between">
+                <span className="text-muted">Gender</span>
+                <span className="font-semibold text-ink">
+                  {profile?.gender === 'M' ? 'Male' : profile?.gender === 'F' ? 'Female' : 'Other'}
+                </span>
+              </div>
+              <div className="px-5 py-3 flex items-center justify-between">
+                <span className="text-muted">Registered Mobile</span>
+                <span className="font-mono font-medium text-ink">{user?.phone || 'Not set'}</span>
+              </div>
+              <div className="px-5 py-3 flex items-center justify-between">
+                <span className="text-muted">Portal Status</span>
+                <span className="inline-flex items-center gap-1.5 font-semibold text-clinical-success">
+                  <span className="w-2 h-2 rounded-full bg-clinical-success" />
+                  Active
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Live Proximity Alerts Feed */}
+          <div className={`editorial-card overflow-hidden ${unreadCount > 0 ? 'border-amber-300' : ''}`}>
+            <div className={`px-5 py-3.5 border-b border-hairline flex items-center justify-between ${unreadCount > 0 ? 'bg-amber-50/70' : 'bg-surface/60'}`}>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display text-sm font-bold text-ink">Proximity Alerts</h2>
                 {unreadCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-600 text-white">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-clinical-warning text-white">
                     {unreadCount} New
                   </span>
                 )}
-              </h2>
-              <p className="text-xs text-gray-500">Auto-refreshes every 5 seconds when queue positions update.</p>
-            </div>
-          </div>
-          {unreadCount > 0 && (
-            <button
-              type="button"
-              onClick={handleMarkAllRead}
-              disabled={notifLoading}
-              className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold transition"
-            >
-              Mark All Read
-            </button>
-          )}
-        </div>
-
-        {notifications.length === 0 ? (
-          <p className="text-xs text-gray-500 italic">{t('noNotifications')}</p>
-        ) : (
-          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-            {notifications.slice(0, 6).map((n) => (
-              <div
-                key={n.id}
-                className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                  n.is_read ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white border-amber-300 text-gray-900 shadow-xs'
-                }`}
-              >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-100 text-indigo-700">
-                      {n.channel || 'in_app'}
-                    </span>
-                    {n.token_code && (
-                      <span className="font-mono font-bold text-blue-700">{n.token_code}</span>
-                    )}
-                    <span className="font-bold">{n.title}</span>
-                    <span className="text-[11px] text-gray-400">
-                      {new Date(n.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="text-xs">{n.message}</p>
-                </div>
-                {!n.is_read && (
-                  <button
-                    type="button"
-                    onClick={() => handleMarkNotificationRead(n.id)}
-                    disabled={notifLoading}
-                    className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold text-[11px] transition"
-                  >
-                    Mark Read
-                  </button>
-                )}
               </div>
-            ))}
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  disabled={notifLoading}
+                  className="text-[11px] font-semibold text-cobalt hover:underline cursor-pointer"
+                >
+                  Mark All Read
+                </button>
+              )}
+            </div>
+
+            <div className="p-4">
+              {notifications.length === 0 ? (
+                <p className="text-xs text-muted leading-relaxed">{t('noNotifications')}</p>
+              ) : (
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {notifications.slice(0, 6).map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-3 rounded-lg border text-xs space-y-1.5 ${
+                        n.is_read
+                          ? 'bg-surface/60 border-hairline text-muted'
+                          : 'bg-amber-50/50 border-amber-200 text-ink'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-cobalt-tint text-cobalt">
+                            {n.channel || 'in_app'}
+                          </span>
+                          {n.token_code && (
+                            <span className="font-mono text-[11px] font-bold text-ink">{n.token_code}</span>
+                          )}
+                        </div>
+                        <span className="font-mono text-[10px] text-muted">
+                          {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="font-semibold text-ink">{n.title}</p>
+                      <p className="leading-relaxed">{n.message}</p>
+                      {!n.is_read && (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkNotificationRead(n.id)}
+                          disabled={notifLoading}
+                          className="text-[11px] font-semibold text-cobalt hover:underline cursor-pointer"
+                        >
+                          Mark as Read
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </aside>
       </div>
 
-      {/* Unified Patient Journey Banner (Step 13) */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 rounded-2xl p-6 text-white shadow-md mb-8 flex flex-col md:flex-row items-center justify-between gap-6 border border-indigo-700/50">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 mb-2">
-            <span>🔗 Connected Care Journey</span>
-            <span>•</span>
-            <span className="font-mono text-white font-bold">{profile?.patient_id || user?.patient_id || 'PAT-0001'}</span>
-          </div>
-          <h2 className="text-xl sm:text-2xl font-bold">Your Integrated Medical Timeline</h2>
-          <p className="text-sm text-indigo-200 mt-1 max-w-2xl">
-            All 5 modules (OPD Consultation &rarr; Bed Allocation &rarr; Blood Bank &rarr; Medical Records &rarr; Billing) are connected under your unique Patient ID.
-          </p>
-        </div>
-        <button
-          onClick={openJourneyModal}
-          className="shrink-0 px-5 py-3 rounded-xl bg-white text-indigo-950 font-bold text-sm hover:bg-indigo-50 transition shadow-lg flex items-center gap-2"
-        >
-          <span>📜</span>
-          <span>View My Medical Journey</span>
-        </button>
-      </div>
-
-      {/* Main Module Action Cards */}
-      <h2 className="text-lg font-bold text-gray-900 mb-4">SmartCare Services</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Module 1: OPD Token Queue */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 text-2xl flex items-center justify-center mb-4">
-              🎟️
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">OPD Token Queue</h3>
-            <p className="text-sm text-gray-600 mt-2">
-              Book a doctor consultation token and view live queue updates so you don't wait in long lines.
-            </p>
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
-            <button
-              onClick={() => navigate('/patient/book-token')}
-              className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 transition shadow-xs"
-            >
-              🎟️ Book OPD Token (Live Queue)
-            </button>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => navigate('/patient/tokens')}
-                className="w-full py-1.5 px-2 rounded-lg bg-blue-50 text-blue-700 font-medium text-xs hover:bg-blue-100 transition text-center"
-              >
-                📱 My Tokens
-              </button>
-              <button
-                onClick={() => navigate('/patient/doctors')}
-                className="w-full py-1.5 px-2 rounded-lg bg-gray-100 text-gray-700 font-medium text-xs hover:bg-gray-200 transition text-center"
-              >
-                👨‍⚕️ Doctor List
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Module 2: Bed Management */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 text-2xl flex items-center justify-center mb-4">
-              🛏️
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Inpatient Care</h3>
-            <p className="text-sm text-gray-600 mt-2">
-              Check your personal inpatient admission record, assigned ward, bed allocation, and attending doctor.
-            </p>
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
-            <button
-              onClick={openJourneyModal}
-              className="w-full py-2 px-4 rounded-lg bg-purple-600 text-white font-medium text-sm hover:bg-purple-700 transition"
-            >
-              📋 My Inpatient Admission Status
-            </button>
-            <button
-              onClick={openJourneyModal}
-              className="w-full py-1.5 px-2 rounded-lg bg-purple-50 text-purple-700 font-medium text-xs hover:bg-purple-100 transition text-center"
-            >
-              📜 View Full Care Timeline
-            </button>
-          </div>
-        </div>
-
-        {/* Module 3: Blood Bank */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 text-2xl flex items-center justify-center mb-4">
-              🩸
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Blood Requisition</h3>
-            <p className="text-sm text-gray-600 mt-2">
-              Submit emergency or planned blood requests directly to the hospital blood bank and track real-time fulfillment.
-            </p>
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-100 space-y-2">
-            <button
-              onClick={() => navigate('/bloodbank/requests')}
-              className="w-full py-2 px-4 rounded-lg bg-rose-600 text-white font-medium text-sm hover:bg-rose-700 transition"
-            >
-              🩸 Emergency Blood Request
-            </button>
-            <button
-              onClick={() => navigate('/bloodbank/requests')}
-              className="w-full py-1.5 px-2 rounded-lg bg-rose-50 text-rose-700 font-medium text-xs hover:bg-rose-100 transition text-center"
-            >
-              📋 My Blood Request History
-            </button>
-          </div>
-        </div>
-
-        {/* Module 4: Clinical Medical Records & Lab Reports */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 text-2xl flex items-center justify-center mb-4">
-              🩺
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">{t('medicalRecordsTitle')}</h3>
-            <p className="text-sm text-gray-600 mt-2">
-              View doctor prescriptions, consultation diagnoses, visit notes, and download verified lab report files.
-            </p>
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <button
-              onClick={() => navigate('/records')}
-              className="w-full py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition"
-            >
-              📂 Open My Medical Records
-            </button>
-          </div>
-        </div>
-
-        {/* Module 5: Billing & PDF Receipts */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between">
-          <div>
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 text-2xl flex items-center justify-center mb-4">
-              🧾
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">{t('billingTitle')}</h3>
-            <p className="text-sm text-gray-600 mt-2">
-              Review itemized OPD & inpatient ward invoices, complete pending payments, and download PDF receipts.
-            </p>
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <button
-              onClick={() => navigate('/billing')}
-              className="w-full py-2 px-4 rounded-lg bg-amber-600 text-white font-medium text-sm hover:bg-amber-700 transition"
-            >
-              💳 View Invoices & PDF Receipts
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Unified Patient Journey Timeline Modal (Modules 1-5) */}
+      {/* Unified Patient Journey Timeline Modal */}
       <PatientJourneyModal
         isOpen={journeyModalOpen}
         onClose={() => setJourneyModalOpen(false)}

@@ -1,11 +1,10 @@
 /**
  * src/pages/reception/ReceptionDashboard.jsx
  * ------------------------------------------
- * Dedicated Front-Desk Reception Portal.
- * Fixes previously broken `/reception/dashboard` routing and gives Receptionists:
- *  - Walk-In OPD Token Issuance on behalf of registered patients
+ * Editorial Clinical Front-Desk Reception Portal:
+ *  - Walk-In OPD Token Issuance on behalf of registered patients (with priority pills)
  *  - Live 5s-polling hospital OPD token board
- *  - Direct shortcuts to Ward Admissions (/beds), Billing Desk (/billing), and Blood Requests
+ *  - Direct shortcuts to Ward Admissions (/beds) and Billing & PDF Receipts (/billing)
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -14,6 +13,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import hospitalService from '../../services/hospitalService';
 import opdService from '../../services/opdService';
+
+const PRIORITY_OPTIONS = [
+  { id: 'normal', label: 'Normal' },
+  { id: 'senior_citizen', label: 'Senior' },
+  { id: 'emergency', label: 'Emergency' },
+];
 
 const ReceptionDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -64,7 +69,7 @@ const ReceptionDashboard = () => {
     return () => clearInterval(interval);
   }, [isAuthorizedReception, loadData]);
 
-  if (authLoading) return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  if (authLoading) return <div className="p-8 text-center text-muted text-sm">Checking authorization...</div>;
   if (!isAuthorizedReception) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -98,51 +103,60 @@ const ReceptionDashboard = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="bg-gradient-to-r from-indigo-700 to-blue-800 rounded-2xl p-6 text-white shadow-md mb-6 flex flex-wrap justify-between items-center gap-4">
-        <div>
-          <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/15 mb-2">
-            🧾 {t('receptionPortal')}
-          </span>
-          <h1 className="text-2xl font-bold">{t('welcome')}, {user.first_name || user.username}</h1>
-          <p className="text-xs text-indigo-100 mt-1">
-            Issue walk-in OPD tokens, coordinate inpatient beds, and generate patient billing receipts.
+    <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header Strip */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-hairline">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="editorial-eyebrow">{t('receptionPortal')} · LIVE 5S QUEUE</span>
+          </div>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+            Front-Desk Operations
+          </h1>
+          <p className="text-xs sm:text-sm text-muted">
+            Signed in as <span className="font-semibold text-ink">{user.first_name || user.username}</span>. Issue walk-in OPD tokens, coordinate inpatient beds, and generate billing receipts.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => navigate('/beds')} className="px-4 py-2 rounded-xl bg-white text-indigo-900 text-xs font-bold cursor-pointer">
-            🛏️ Ward Admissions
+
+        <div className="flex flex-wrap gap-2.5 shrink-0">
+          <button type="button" onClick={() => navigate('/beds')} className="editorial-btn-secondary">
+            Ward Admissions
           </button>
-          <button onClick={() => navigate('/billing')} className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold cursor-pointer">
-            💳 Billing & PDF Receipts
+          <button
+            type="button"
+            onClick={() => navigate('/billing')}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-clinical-success hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer"
+          >
+            Billing &amp; PDF Receipts
           </button>
         </div>
       </div>
 
       {msg.text && (
         <div
-          className={`mb-5 p-3.5 rounded-xl text-xs font-semibold border ${
+          className={`p-3.5 rounded-xl text-xs font-semibold border ${
             msg.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-rose-50 border-rose-200 text-rose-700'
+              ? 'bg-emerald-50 border-emerald-200 text-clinical-success'
+              : 'bg-rose-50 border-rose-200 text-clinical-danger'
           }`}
         >
           {msg.text}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Issue Walk-in Token Form */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-          <h2 className="text-base font-bold text-slate-900 mb-3">🎟️ Issue OPD Walk-In Token</h2>
-          <form onSubmit={handleIssueToken} className="space-y-3.5">
+      {/* 2-Column Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
+        {/* Issue Walk-in Token Card */}
+        <div className="editorial-surface p-6 space-y-4">
+          <h2 className="font-display text-base font-bold text-ink">Issue Walk-In OPD Token</h2>
+          <form onSubmit={handleIssueToken} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Registered Patient *</label>
+              <label className="block text-xs font-semibold text-ink mb-1.5">Registered Patient *</label>
               <select
                 required
                 value={formData.patient}
                 onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
+                className="editorial-input"
               >
                 <option value="">Select Patient</option>
                 {patients.map((p) => (
@@ -152,48 +166,67 @@ const ReceptionDashboard = () => {
                 ))}
               </select>
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">On-Duty Doctor *</label>
+              <label className="block text-xs font-semibold text-ink mb-1.5">On-Duty Doctor *</label>
               <select
                 required
                 value={formData.doctor}
                 onChange={(e) => setFormData({ ...formData, doctor: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
+                className="editorial-input"
               >
                 <option value="">Select Doctor</option>
                 {doctors.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.doctor_name} ({d.department_name} - {d.room_number})
+                    {d.doctor_name} · {d.room_number}
                   </option>
                 ))}
               </select>
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Priority</label>
-              <select
-                value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
-              >
-                <option value="normal">Normal</option>
-                <option value="senior_citizen">Senior Citizen</option>
-                <option value="emergency">Emergency</option>
-              </select>
+              <label className="block text-xs font-semibold text-ink mb-1.5">Priority</label>
+              <div className="grid grid-cols-3 gap-2">
+                {PRIORITY_OPTIONS.map((opt) => {
+                  const selected = formData.priority === opt.id;
+                  const isEmergency = opt.id === 'emergency';
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, priority: opt.id })}
+                      className={`py-2 px-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                        selected
+                          ? isEmergency
+                            ? 'border-clinical-danger bg-rose-50 text-clinical-danger'
+                            : 'border-cobalt bg-cobalt-tint text-cobalt'
+                          : isEmergency
+                          ? 'border-hairline bg-white text-clinical-danger hover:bg-rose-50/40'
+                          : 'border-hairline bg-white text-muted hover:text-ink'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Chief Complaint / Notes</label>
+              <label className="block text-xs font-semibold text-ink mb-1.5">Chief Complaint</label>
               <textarea
-                rows="2"
+                rows="3"
                 value={formData.symptoms}
                 onChange={(e) => setFormData({ ...formData, symptoms: e.target.value })}
                 placeholder="Brief walk-in notes..."
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl"
+                className="editorial-input resize-none"
               />
             </div>
+
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+              className="w-full editorial-btn-primary py-2.5"
             >
               {submitting ? 'Generating...' : 'Issue OPD Token'}
             </button>
@@ -201,40 +234,65 @@ const ReceptionDashboard = () => {
         </div>
 
         {/* Today's Live OPD Queue Table */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-base font-bold text-slate-900">📋 Today's OPD Queue Desk</h2>
-            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-              🟢 {t('liveQueueActive')}
+        <div className="editorial-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-hairline flex flex-wrap justify-between items-center gap-2">
+            <h2 className="font-display text-base font-bold text-ink">Today&apos;s Live OPD Queue Desk</h2>
+            <span className="font-mono text-[11px] font-semibold text-clinical-success uppercase">
+              {tokens.length} ACTIVE TOKENS · {t('liveQueueActive')}
             </span>
           </div>
+
           {loading ? (
-            <div className="py-10 text-center text-slate-400 text-xs">Loading live tokens...</div>
+            <div className="py-12 text-center text-muted text-xs">Loading live tokens...</div>
           ) : tokens.length === 0 ? (
-            <div className="py-10 text-center text-slate-500 text-xs">No tokens issued yet today.</div>
+            <div className="py-12 text-center text-muted text-xs">No tokens issued yet today.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px]">
-                    <th className="py-2 pr-3">Token</th>
-                    <th className="py-2 pr-3">Patient</th>
-                    <th className="py-2 pr-3">Doctor</th>
-                    <th className="py-2 pr-3">Priority</th>
-                    <th className="py-2">Status</th>
+                  <tr className="bg-surface border-b border-hairline font-mono text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    <th className="py-3 px-5">Token</th>
+                    <th className="py-3 px-4">Patient</th>
+                    <th className="py-3 px-4">Doctor</th>
+                    <th className="py-3 px-4">Priority</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-5 text-right">Next Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-hairline">
                   {tokens.map((tok) => (
-                    <tr key={tok.id}>
-                      <td className="py-2.5 pr-3 font-mono font-bold text-blue-700">{tok.token_code}</td>
-                      <td className="py-2.5 pr-3 font-semibold text-slate-800">{tok.patient_name}</td>
-                      <td className="py-2.5 pr-3 text-slate-600">{tok.doctor_name}</td>
-                      <td className="py-2.5 pr-3 capitalize">{tok.priority.replace('_', ' ')}</td>
-                      <td className="py-2.5">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold uppercase text-[10px]">
+                    <tr key={tok.id} className="hover:bg-surface/50 transition">
+                      <td className="py-3.5 px-5 font-mono font-bold text-cobalt">{tok.token_code}</td>
+                      <td className="py-3.5 px-4 font-semibold text-ink">{tok.patient_name}</td>
+                      <td className="py-3.5 px-4 text-muted">{tok.doctor_name}</td>
+                      <td className={`py-3.5 px-4 capitalize font-semibold ${
+                        tok.priority === 'emergency'
+                          ? 'text-clinical-danger'
+                          : tok.priority === 'senior_citizen'
+                          ? 'text-clinical-warning'
+                          : 'text-muted'
+                      }`}>
+                        {tok.priority.replace('_', ' ')}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`font-mono text-[10px] font-bold uppercase ${
+                          tok.status === 'called' || tok.status === 'in_progress'
+                            ? 'text-cobalt'
+                            : tok.status === 'completed'
+                            ? 'text-clinical-success'
+                            : 'text-muted'
+                        }`}>
                           {tok.status}
                         </span>
+                      </td>
+                      <td className="py-3.5 px-5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/billing?patient=${tok.patient}&token=${tok.id}&new=1`)}
+                          className="font-mono text-[11px] font-semibold text-cobalt hover:underline cursor-pointer"
+                        >
+                          Invoice →
+                        </button>
                       </td>
                     </tr>
                   ))}

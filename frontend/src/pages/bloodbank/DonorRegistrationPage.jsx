@@ -12,7 +12,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
-import Navbar from '../../components/common/Navbar';
 import { Link, Navigate } from 'react-router-dom';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
@@ -128,77 +127,66 @@ const DonorRegistrationPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Navigation Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-6">
-          <Link to="/bloodbank" className="hover:text-rose-600 transition">
-            🩸 Blood Bank Inventory
-          </Link>
-          <span>/</span>
-          <span className="text-gray-900">Donor Registration</span>
-        </div>
-
+    <div className="bg-white">
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Success Alert */}
         {successMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center justify-between shadow-xs animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🎉</span>
-              <span>{successMsg}</span>
-            </div>
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-clinical-success text-xs font-semibold flex items-center justify-between">
+            <span>{successMsg}</span>
             <button
+              type="button"
               onClick={() => setSuccessMsg(null)}
-              className="text-emerald-700 hover:text-emerald-900 font-bold"
+              className="text-clinical-success hover:opacity-75 font-bold cursor-pointer"
             >
-              ✕
+              ×
             </button>
           </div>
         )}
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-sm font-semibold flex items-center justify-between shadow-xs">
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-clinical-danger text-xs font-semibold flex items-center justify-between">
             <span>{errorMsg}</span>
             <button
+              type="button"
               onClick={() => setErrorMsg(null)}
-              className="text-red-700 hover:text-red-900 font-bold"
+              className="text-clinical-danger hover:opacity-75 font-bold cursor-pointer"
             >
-              ✕
+              ×
             </button>
           </div>
         )}
 
-        {/* Hero Banner */}
-        <div className="bg-gradient-to-r from-rose-700 via-red-700 to-rose-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div>
-            <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-xs mb-3">
-              ❤️ Save Lives — Give Blood
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              Voluntary Blood Donor Registration
+        {/* Editorial Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-hairline">
+          <div className="space-y-1.5">
+            <span className="editorial-eyebrow">Blood Bank Registry · Verified Voluntary Donors</span>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+              Voluntary Donor Directory
             </h1>
-            <p className="text-rose-100 text-xs sm:text-sm mt-1 max-w-xl">
-              Register in our emergency hospital network. When local patients face critical shortages,
-              our team can reach out to you directly.
+            <p className="text-xs sm:text-sm text-muted max-w-xl">
+              Register eligible voluntary donors with automatic 90-day cooldown checks and search by blood group or city.
             </p>
           </div>
 
-          <Link
-            to="/bloodbank/requests"
-            className="px-5 py-2.5 rounded-2xl bg-white text-rose-700 hover:bg-rose-50 text-xs font-black uppercase tracking-wider shadow-md transition self-start md:self-auto"
-          >
-            📋 Request Blood Instead →
-          </Link>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Link to="/bloodbank/stock" className="editorial-btn-secondary">
+              Live Stock
+            </Link>
+            <Link to="/bloodbank/requests" className="editorial-btn-primary">
+              Blood Requests Queue →
+            </Link>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── LEFT: REGISTRATION FORM ── */}
-          <div className="bg-white rounded-3xl border border-gray-200/90 p-6 sm:p-8 shadow-xs lg:col-span-1">
-            <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
-              <span>✍️</span> Register as a Donor
+          <div className="editorial-surface p-6 lg:col-span-1">
+            <h2 className="font-display text-base font-bold text-ink">
+              Register as a Donor
             </h2>
-            <p className="text-xs text-gray-500 mt-1 mb-6">
-              Fill in your contact and donation details.
+            <p className="text-xs text-muted mt-1 mb-5">
+              Fill in contact, blood group, and donation history.
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -337,34 +325,32 @@ const DonorRegistrationPage = () => {
           </div>
 
           {/* ── RIGHT: REGISTERED DONORS DIRECTORY ── */}
-          <div className="bg-white rounded-3xl border border-gray-200/90 p-6 sm:p-8 shadow-xs lg:col-span-2 flex flex-col justify-between">
+          <div className="editorial-card p-6 lg:col-span-2 flex flex-col justify-between">
             <div>
               {/* Header & Filter Controls */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-gray-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                    <span>👥</span> Hospital Donor Directory
+                  <h2 className="font-display text-base font-bold text-ink">
+                    Hospital Donor Directory
                   </h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Verified voluntary donors available for emergency blood collection.
+                  <p className="text-xs text-muted mt-0.5">
+                    Verified voluntary donors available for emergency replacement donations.
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* City Search */}
                   <input
                     type="text"
                     placeholder="Filter by city..."
                     value={cityFilter}
                     onChange={(e) => setCityFilter(e.target.value)}
-                    className="w-36 sm:w-40 px-3 py-1.5 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className="editorial-input py-1.5 px-3 text-xs w-36 sm:w-44"
                   />
 
-                  {/* Group Filter */}
                   <select
                     value={selectedGroup}
                     onChange={(e) => setSelectedGroup(e.target.value)}
-                    className="px-2.5 py-1.5 text-xs rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white font-bold"
+                    className="editorial-input py-1.5 px-3 text-xs font-mono font-bold w-auto"
                   >
                     <option value="all">All Groups</option>
                     {BLOOD_GROUPS.map((bg) => (
@@ -379,23 +365,22 @@ const DonorRegistrationPage = () => {
               {/* Donors List */}
               {loading ? (
                 <div className="py-20 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600 mx-auto"></div>
-                  <p className="mt-3 text-xs text-gray-500 font-semibold">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cobalt mx-auto"></div>
+                  <p className="mt-3 text-xs text-muted font-medium">
                     Loading donors directory...
                   </p>
                 </div>
               ) : donors.length === 0 ? (
-                <div className="p-12 text-center text-gray-500">
-                  <span className="text-4xl block mb-2">🔍</span>
-                  <p className="font-bold text-sm">No Donors Found</p>
-                  <p className="text-xs text-gray-400 mt-1">
+                <div className="p-12 text-center text-muted">
+                  <p className="font-display font-bold text-sm text-ink">No Donors Found</p>
+                  <p className="text-xs text-muted mt-1">
                     No registered donors match your current filter criteria.
                   </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto mt-4">
-                  <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-                    <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold tracking-wider">
+                  <table className="min-w-full divide-y divide-hairline text-left text-xs">
+                    <thead className="bg-surface text-muted uppercase font-mono text-[10px] font-semibold tracking-wider border-b border-hairline">
                       <tr>
                         <th className="px-4 py-3">Group</th>
                         <th className="px-4 py-3">Donor Name</th>
@@ -405,34 +390,34 @@ const DonorRegistrationPage = () => {
                         <th className="px-4 py-3 text-right">Eligibility</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-hairline bg-white">
                       {donors.map((d) => (
-                        <tr key={d.id} className="hover:bg-gray-50/70 transition">
-                          <td className="px-4 py-3">
-                            <span className="inline-block px-2.5 py-1 rounded-xl bg-rose-100 text-rose-800 font-black text-xs">
+                        <tr key={d.id} className="hover:bg-surface/60 transition">
+                          <td className="px-4 py-3.5">
+                            <span className="inline-block px-2.5 py-0.5 rounded bg-rose-50 text-clinical-danger border border-rose-200 font-mono font-bold text-xs">
                               {d.blood_group}
                             </span>
                           </td>
-                          <td className="px-4 py-3 font-bold text-gray-900">{d.name}</td>
-                          <td className="px-4 py-3 text-xs text-gray-600 font-medium">
-                            📍 {d.city || 'Local'}
+                          <td className="px-4 py-3.5 font-semibold text-ink">{d.name}</td>
+                          <td className="px-4 py-3.5 text-muted">
+                            {d.city || 'Local'}
                           </td>
-                          <td className="px-4 py-3 text-xs font-mono font-bold text-blue-700">
+                          <td className="px-4 py-3.5 font-mono font-semibold text-cobalt">
                             <a href={`tel:${d.phone}`} className="hover:underline">
-                              📞 {d.phone}
+                              {d.phone}
                             </a>
                           </td>
-                          <td className="px-4 py-3 text-xs text-gray-500">
+                          <td className="px-4 py-3.5 font-mono text-muted">
                             {d.last_donation_date ? d.last_donation_date : 'First-time'}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3.5 text-right">
                             {d.can_donate_now ? (
-                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300">
-                                ✅ Ready to Donate
+                              <span className="font-mono px-2.5 py-0.5 rounded bg-emerald-50 text-clinical-success text-[10px] font-bold border border-emerald-200 uppercase">
+                                Eligible
                               </span>
                             ) : (
-                              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
-                                ⏳ Cooldown
+                              <span className="font-mono px-2.5 py-0.5 rounded bg-amber-50 text-clinical-warning text-[10px] font-bold border border-amber-200 uppercase">
+                                Cooldown
                               </span>
                             )}
                           </td>
@@ -444,14 +429,13 @@ const DonorRegistrationPage = () => {
               )}
             </div>
 
-            {/* Clinical Note Footer */}
-            <div className="mt-6 pt-4 border-t border-gray-100 text-2xs text-gray-500 flex items-center justify-between">
+            <div className="mt-6 pt-4 border-t border-hairline text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
               <span>Standard Donation Interval: 90 Days between whole blood donations.</span>
-              <span>Total Donors: {donors.length}</span>
+              <span className="font-mono font-semibold text-ink">Total Donors: {donors.length}</span>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };

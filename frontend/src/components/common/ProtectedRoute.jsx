@@ -1,43 +1,43 @@
 /**
  * src/components/common/ProtectedRoute.jsx
  * -----------------------------------------
- * Route guard component that:
- *  1. Checks if the user is authenticated. If not -> redirects to /login.
- *  2. Checks if the user's role is permitted. If not -> redirects to their role dashboard.
+ * Route guard component with Editorial Clinical Canvas, Universal Navbar,
+ * and Guided Role-Based WorkflowBar across all pages.
  */
 
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from './Navbar';
+import WorkflowBar from './WorkflowBar';
 
 const ProtectedRoute = ({ allowedRoles = [], hideNavbar = false }) => {
   const { user, isAuthenticated, loading, getDashboardPath } = useAuth();
 
-  // If still checking localStorage auth token, show a light loading spinner
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="animate-spin rounded-full h-9 w-9 border-b-2 border-cobalt"></div>
       </div>
     );
   }
 
-  // Not authenticated -> redirect to login
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
   }
 
-  // Role check: if route specifies allowedRoles and user role is not allowed
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    // Redirect user to their own role dashboard
     return <Navigate to={getDashboardPath(user.role)} replace />;
   }
 
-  // Authenticated & authorized
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {!hideNavbar && <Navbar />}
+    <div className="min-h-screen bg-white flex flex-col">
+      {!hideNavbar && (
+        <>
+          <Navbar />
+          <WorkflowBar />
+        </>
+      )}
       <main className="flex-1">
         <Outlet />
       </main>

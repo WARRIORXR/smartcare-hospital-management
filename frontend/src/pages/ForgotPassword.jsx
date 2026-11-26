@@ -1,13 +1,14 @@
 /**
  * src/pages/ForgotPassword.jsx
  * ----------------------------
- * Initiates secure password reset email dispatch.
+ * Editorial Clinical Password Reset Request Page.
  */
 
 import React, { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import authService from '../services/authService';
+import { BrandLogo } from '../components/common/Navbar';
 
 const ForgotPassword = () => {
   const { user, isAuthenticated, getDashboardPath } = useAuth();
@@ -39,58 +40,67 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-900 mb-1">Reset Your Password</h2>
-        <p className="text-xs text-slate-500 mb-5">
-          Enter your registered email address and we will send password reset instructions.
-        </p>
+    <div className="min-h-screen bg-surface flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md space-y-6">
+        <div className="flex justify-center">
+          <BrandLogo size="lg" />
+        </div>
 
-        {message && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-2">
-            <p className="font-semibold">{message}</p>
-            {devPreview && (
-              <Link
-                to={`/reset-password/${devPreview.uid}/${devPreview.token}`}
-                className="inline-block font-bold text-blue-700 underline"
-              >
-                Dev Mode Reset Link →
-              </Link>
-            )}
+        <div className="editorial-card p-7 sm:p-8 space-y-5">
+          <div className="space-y-1">
+            <p className="editorial-eyebrow">Account Recovery</p>
+            <h1 className="font-display text-xl font-bold text-ink">Reset Your Password</h1>
+            <p className="text-xs text-muted leading-relaxed">
+              Enter your registered email address and we will send password reset instructions.
+            </p>
           </div>
-        )}
 
-        {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
-            {error}
+          {message && (
+            <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-clinical-success space-y-2">
+              <p className="font-semibold">{message}</p>
+              {devPreview && (
+                <Link
+                  to={`/reset-password/${devPreview.uid}/${devPreview.token}`}
+                  className="inline-block font-bold text-cobalt underline"
+                >
+                  Open Dev Mode Reset Link →
+                </Link>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-clinical-danger font-medium">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-ink mb-1.5">Email Address</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="editorial-input"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full editorial-btn-primary py-2.5 text-sm"
+            >
+              {loading ? 'Sending Reset Email...' : 'Send Password Reset Link'}
+            </button>
+          </form>
+
+          <div className="pt-3 border-t border-hairline text-center text-xs">
+            <Link to="/login" className="text-cobalt font-semibold hover:underline">
+              ← Back to Sign In
+            </Link>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 transition cursor-pointer"
-          >
-            {loading ? 'Sending Reset Email...' : 'Send Password Reset Link'}
-          </button>
-        </form>
-
-        <div className="mt-5 text-center text-xs">
-          <Link to="/login" className="text-blue-600 font-semibold hover:underline">
-            ← Back to Sign In
-          </Link>
         </div>
       </div>
     </div>

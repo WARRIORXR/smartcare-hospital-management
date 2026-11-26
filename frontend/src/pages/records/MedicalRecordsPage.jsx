@@ -2,12 +2,11 @@
  * src/pages/records/MedicalRecordsPage.jsx
  * ----------------------------------------
  * Module 4: Prescriptions, Visit Notes & Lab Reports (with secure file upload/download).
- *  - Doctors / Admins: Create clinical notes, structured prescriptions, or upload lab report PDFs/images.
- *  - Patients: Read & download ONLY their own medical records.
+ * Supports URL pre-filling via ?patient=<id>&new=1 from Doctor Consultation Room.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import clinicalService from '../../services/clinicalService';
@@ -16,23 +15,29 @@ import hospitalService from '../../services/hospitalService';
 const MedicalRecordsPage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const isAuthorizedRecords = Boolean(
     isAuthenticated && user && ['patient', 'doctor', 'admin'].includes(user.role)
   );
   const isClinician = user?.role === 'doctor' || user?.role === 'admin' || user?.is_staff;
 
+  const urlPatientId = searchParams.get('patient') || '';
+  const urlOpenNew = searchParams.get('new') === '1';
+
   const [records, setRecords] = useState([]);
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [filterType, setFilterType] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [msg, setMsg] = useState({ type: '', text: '' });
   const submittingRef = useRef(false);
 
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
-    patient: '',
+    patient: urlPatientId,
     record_type: 'prescription',
     title: '',
     diagnosis: '',
@@ -43,6 +48,13 @@ const MedicalRecordsPage = () => {
     duration: '5 days',
   });
   const [attachment, setAttachment] = useState(null);
+
+  useEffect(() => {
+    if (isClinician && urlPatientId) {
+      setFormData((prev) => ({ ...prev, patient: urlPatientId }));
+      if (urlOpenNew) setShowModal(true);
+    }
+  }, [isClinician, urlPatientId, urlOpenNew]);
 
   const loadData = useCallback(async () => {
     try {
@@ -66,7 +78,7 @@ const MedicalRecordsPage = () => {
     loadData();
   }, [isAuthorizedRecords, loadData]);
 
-  if (authLoading) return <div className="p-8 text-center text-gray-500">Checking authorization...</div>;
+  if (authLoading) return <div className="p-8 text-center text-muted text-sm">Checking authorization...</div>;
   if (!isAuthorizedRecords) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -125,49 +137,102 @@ const MedicalRecordsPage = () => {
     }
   };
 
-  const filtered = filterType === 'all' ? records : records.filter((r) => r.record_type === filterType);
+  const filtered = records.filter((r) => {
+    if (filterType !== 'all' && r.record_type !== filterType) return false;
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (r.title || '').toLowerCase().includes(q) ||
+      (r.diagnosis || '').toLowerCase().includes(q) ||
+      (r.patient_name || '').toLowerCase().includes(q) ||
+      (r.patient_code || '').toLowerCase().includes(q) ||
+      (r.doctor_name || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">🩺 {t('medicalRecordsTitle')}</h1>
-          <p className="text-xs text-slate-500 mt-1">
+    <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header Strip */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-hairline">
+        <div className="space-y-1.5">
+          <span className="editorial-eyebrow">Clinical Documentation · Audited PHI</span>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">{t('medicalRecordsTitle')}</h1>
+          <p className="text-xs sm:text-sm text-muted">
             {isClinician
-              ? 'Write visit notes, prescriptions, and upload encrypted lab reports for patients.'
-              : 'View your personal prescriptions, consultation notes, and download lab reports.'}
+              ? 'Write visit notes, prescriptions, and upload encrypted lab reports. Every view is logged.'
+              : 'Review your prescriptions, consultation notes, and download verified lab reports.'}
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {['all', 'prescription', 'visit_note', 'lab_report'].map((type) => (
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {isClinician ? (
+            <>
+              <button
+                type="button"
+                onClick={() => navigate('/billing')}
+                className="editorial-btn-secondary"
+              >
+                Go to Billing →
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(urlPatientId ? `/records/new?patient=${urlPatientId}` : '/records/new')}
+                className="editorial-btn-primary"
+              >
+                + Write Rx / Lab Record
+              </button>
+            </>
+          ) : (
             <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition cursor-pointer ${
-                filterType === type ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
+              type="button"
+              onClick={() => navigate('/billing')}
+              className="editorial-btn-primary"
             >
-              {type.replace('_', ' ')}
-            </button>
-          ))}
-          {isClinician && (
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-            >
-              + New Clinical Record
+              View Bills &amp; Receipts →
             </button>
           )}
         </div>
       </div>
 
+      {/* Filter Tabs & Search */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-hairline pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { id: 'all', label: `All Records (${records.length})` },
+            { id: 'prescription', label: 'Prescriptions' },
+            { id: 'visit_note', label: 'Visit Notes' },
+            { id: 'lab_report', label: 'Lab Reports' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setFilterType(tab.id)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition border cursor-pointer ${
+                filterType === tab.id
+                  ? 'bg-cobalt text-white border-cobalt'
+                  : 'bg-white border-hairline text-muted hover:text-ink hover:bg-surface'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search diagnosis, title, doctor, PAT-ID..."
+          className="editorial-input py-1.5 px-3 text-xs sm:w-72"
+        />
+      </div>
+
       {msg.text && (
         <div
-          className={`mb-5 p-3.5 rounded-xl text-xs font-semibold border ${
+          className={`p-3.5 rounded-xl text-xs font-semibold border ${
             msg.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-rose-50 border-rose-200 text-rose-700'
+              ? 'bg-emerald-50 border-emerald-200 text-clinical-success'
+              : 'bg-rose-50 border-rose-200 text-clinical-danger'
           }`}
         >
           {msg.text}
@@ -175,57 +240,60 @@ const MedicalRecordsPage = () => {
       )}
 
       {loading ? (
-        <div className="py-16 text-center text-slate-400 text-sm">Loading medical records...</div>
+        <div className="py-16 text-center text-muted text-sm">Loading medical records...</div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 text-sm">
+        <div className="editorial-card p-12 text-center text-muted text-sm">
           No medical records found for this filter.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {filtered.map((rec) => (
-            <div key={rec.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-3">
+            <div key={rec.id} className="editorial-card p-6 flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                    className={`font-mono px-2.5 py-0.5 rounded text-[10px] font-bold uppercase border ${
                       rec.record_type === 'prescription'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        ? 'bg-cobalt-tint text-cobalt border-cobalt/20'
                         : rec.record_type === 'lab_report'
-                        ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        ? 'bg-amber-50 text-clinical-warning border-amber-200'
+                        : 'bg-emerald-50 text-clinical-success border-emerald-200'
                     }`}
                   >
                     {rec.record_type_display || rec.record_type}
                   </span>
-                  <span className="text-[11px] text-slate-400 font-mono">
+                  <span className="font-mono text-[11px] text-muted">
                     {new Date(rec.created_at).toLocaleDateString()}
                   </span>
                 </div>
 
-                <h3 className="text-base font-bold text-slate-900">{rec.title}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Patient: <strong className="text-slate-700">{rec.patient_name}</strong> ({rec.patient_code}) • {rec.doctor_name}
-                </p>
+                <div>
+                  <h3 className="font-display text-base font-bold text-ink">{rec.title}</h3>
+                  <p className="text-xs text-muted mt-0.5">
+                    Patient: <strong className="text-ink">{rec.patient_name}</strong>{' '}
+                    <span className="font-mono">({rec.patient_code})</span> · {rec.doctor_name}
+                  </p>
+                </div>
 
                 {rec.diagnosis && (
-                  <p className="mt-2 text-xs font-semibold text-slate-800 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                  <p className="text-xs font-semibold text-ink bg-surface px-3 py-2 rounded-lg border border-hairline">
                     Diagnosis: {rec.diagnosis}
                   </p>
                 )}
 
                 {rec.visit_notes && (
-                  <p className="mt-2 text-xs text-slate-600 leading-relaxed">{rec.visit_notes}</p>
+                  <p className="text-xs text-muted leading-relaxed">{rec.visit_notes}</p>
                 )}
 
                 {Array.isArray(rec.prescription_items) && rec.prescription_items.length > 0 && (
-                  <div className="mt-3 bg-blue-50/50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-[10px] font-bold uppercase text-blue-700 mb-1.5">Medications Prescribed</p>
-                    <ul className="space-y-1">
+                  <div className="bg-cobalt-tint/40 border border-cobalt/15 rounded-xl p-3.5 space-y-2">
+                    <p className="font-mono text-[10px] font-bold uppercase text-cobalt">Medications Prescribed</p>
+                    <ul className="space-y-1.5">
                       {rec.prescription_items.map((item, i) => (
-                        <li key={i} className="text-xs text-slate-800 flex justify-between">
-                          <span className="font-semibold">💊 {item.medicine}</span>
-                          <span className="text-slate-600 font-mono text-[11px]">
-                            {item.dosage} • {item.frequency} ({item.duration})
+                        <li key={i} className="text-xs text-ink flex justify-between gap-2">
+                          <span className="font-semibold">{item.medicine}</span>
+                          <span className="text-muted font-mono text-[11px]">
+                            {item.dosage} · {item.frequency} ({item.duration})
                           </span>
                         </li>
                       ))}
@@ -234,17 +302,33 @@ const MedicalRecordsPage = () => {
                 )}
               </div>
 
-              {rec.has_attachment && (
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs text-slate-500 truncate max-w-[200px]">
-                    📎 {rec.attachment_name || 'Lab Report'}
-                  </span>
-                  <button
-                    onClick={() => clinicalService.downloadLabReport(rec.id, rec.attachment_name || `report_${rec.id}.pdf`)}
-                    className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition cursor-pointer"
-                  >
-                    ⬇ Download File
-                  </button>
+              {(rec.has_attachment || isClinician) && (
+                <div className="pt-3 border-t border-hairline flex flex-wrap items-center justify-between gap-2">
+                  {rec.has_attachment ? (
+                    <>
+                      <span className="text-xs text-muted font-mono truncate max-w-[200px]">
+                        {rec.attachment_name || 'Lab Report'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => clinicalService.downloadLabReport(rec.id, rec.attachment_name || `report_${rec.id}.pdf`)}
+                        className="editorial-btn-secondary py-1.5 px-3"
+                      >
+                        Download Report ↓
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-muted">Clinical Entry Saved</span>
+                  )}
+                  {isClinician && rec.patient && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/billing?patient=${rec.patient}&new=1`)}
+                      className="text-xs font-semibold text-cobalt hover:underline cursor-pointer"
+                    >
+                      Generate Invoice →
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -253,20 +337,20 @@ const MedicalRecordsPage = () => {
       )}
 
       {showModal && isClinician && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-8">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-900">Create Clinical Record</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">×</button>
+        <div className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="editorial-card max-w-lg w-full p-6 sm:p-7 shadow-2xl my-8">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-hairline">
+              <h3 className="font-display text-lg font-bold text-ink">Create Clinical Record</h3>
+              <button type="button" onClick={() => setShowModal(false)} className="text-muted hover:text-ink text-xl font-bold cursor-pointer">×</button>
             </div>
             <form onSubmit={handleCreate} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Patient *</label>
+                <label className="block text-xs font-semibold text-ink mb-1">Patient *</label>
                 <select
                   required
                   value={formData.patient}
                   onChange={(e) => setFormData({ ...formData, patient: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
+                  className="editorial-input"
                 >
                   <option value="">Select Patient</option>
                   {patients.map((p) => (
@@ -278,11 +362,11 @@ const MedicalRecordsPage = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Record Type</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Record Type</label>
                   <select
                     value={formData.record_type}
                     onChange={(e) => setFormData({ ...formData, record_type: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"
+                    className="editorial-input"
                   >
                     <option value="prescription">Prescription</option>
                     <option value="visit_note">Visit Note</option>
@@ -290,93 +374,93 @@ const MedicalRecordsPage = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Diagnosis</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Diagnosis</label>
                   <input
                     type="text"
                     value={formData.diagnosis}
                     onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
                     placeholder="e.g. Viral Fever"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl"
+                    className="editorial-input"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Record Title *</label>
+                <label className="block text-xs font-semibold text-ink mb-1">Record Title *</label>
                 <input
                   type="text"
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g. Outpatient Consultation & Prescription"
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl"
+                  className="editorial-input"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Clinical Visit Notes</label>
+                <label className="block text-xs font-semibold text-ink mb-1">Clinical Visit Notes</label>
                 <textarea
                   rows="2"
                   value={formData.visit_notes}
                   onChange={(e) => setFormData({ ...formData, visit_notes: e.target.value })}
                   placeholder="Observations, vitals, instructions..."
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl"
+                  className="editorial-input resize-none"
                 />
               </div>
-              <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-100 space-y-2">
-                <p className="text-[11px] font-bold text-blue-800 uppercase">Medication (Optional)</p>
+              <div className="p-3.5 rounded-xl bg-surface border border-hairline space-y-2.5">
+                <p className="font-mono text-[10px] font-bold text-cobalt uppercase tracking-wider">Medication (Optional)</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
                     value={formData.medicineName}
                     onChange={(e) => setFormData({ ...formData, medicineName: e.target.value })}
                     placeholder="Medicine name & mg"
-                    className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                    className="editorial-input py-1.5 px-2.5 text-xs"
                   />
                   <input
                     type="text"
                     value={formData.dosage}
                     onChange={(e) => setFormData({ ...formData, dosage: e.target.value })}
                     placeholder="Dosage"
-                    className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                    className="editorial-input py-1.5 px-2.5 text-xs"
                   />
                   <input
                     type="text"
                     value={formData.frequency}
                     onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
                     placeholder="Frequency"
-                    className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                    className="editorial-input py-1.5 px-2.5 text-xs"
                   />
                   <input
                     type="text"
                     value={formData.duration}
                     onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                     placeholder="Duration"
-                    className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                    className="editorial-input py-1.5 px-2.5 text-xs"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink mb-1">
                   Lab Report Attachment (.pdf, .png, .jpg — Max 5MB)
                 </label>
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.txt"
                   onChange={(e) => setAttachment(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-slate-600"
+                  className="w-full text-xs text-muted"
                 />
               </div>
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-hairline">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="editorial-btn-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-50"
+                  className="editorial-btn-primary px-5"
                 >
                   {submitting ? 'Saving...' : 'Save Medical Record'}
                 </button>

@@ -73,52 +73,53 @@ const DoctorList = () => {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 sm:p-8 text-white shadow-lg mb-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-white mb-2">
-              🏥 Doctor Directory
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Hospital Doctors & Specialist Clinics
-            </h1>
-            <p className="mt-1 text-blue-100 text-sm">
-              Find doctor room numbers, average consultation durations, and check duty availability.
-            </p>
-          </div>
+    <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header Strip */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-hairline">
+        <div className="space-y-1.5">
+          <span className="editorial-eyebrow">Specialist Directory</span>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+            Hospital Doctors &amp; Clinics
+          </h1>
+          <p className="text-xs sm:text-sm text-muted">
+            Check clinic room assignments, consultation fees, patient ratings, and duty availability before booking.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
           <button
-            onClick={() => navigate('/patient/dashboard')}
-            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/30 text-white text-xs font-bold transition"
+            type="button"
+            onClick={() => navigate('/patient/book-token')}
+            className="editorial-btn-primary"
           >
-            ← Back to Dashboard
+            + Compare Live Queues
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/patient/dashboard')}
+            className="editorial-btn-secondary"
+          >
+            ← Portal Home
           </button>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm mb-8 space-y-4 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
-        {/* Search input */}
-        <div className="flex-1 relative">
-          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 text-sm">
-            🔍
-          </span>
+      {/* Filter & Search Bar */}
+      <div className="editorial-surface p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex-1">
           <input
             type="text"
             placeholder="Search by doctor name, specialty, or clinic..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="editorial-input"
           />
         </div>
 
-        {/* Department selector */}
         <div className="sm:w-64">
           <select
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
-            className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="editorial-input"
           >
             <option value="">All Departments ({departments.length})</option>
             {departments.map((dept) => (
@@ -129,117 +130,107 @@ const DoctorList = () => {
           </select>
         </div>
 
-        {/* Availability Toggle */}
-        <div className="flex items-center space-x-2 pl-1">
+        <label htmlFor="availableToggle" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-hairline cursor-pointer shrink-0">
           <input
             type="checkbox"
             id="availableToggle"
             checked={onlyAvailable}
             onChange={(e) => setOnlyAvailable(e.target.checked)}
-            className="h-4 w-4 text-blue-600 rounded"
+            className="h-4 w-4 text-cobalt rounded border-hairline"
           />
-          <label htmlFor="availableToggle" className="text-xs font-semibold text-gray-700 whitespace-nowrap">
-            Available Only
-          </label>
-        </div>
+          <span className="text-xs font-semibold text-ink whitespace-nowrap">Available Only</span>
+        </label>
       </div>
 
       {/* Doctors Grid */}
       {loading ? (
         <div className="flex justify-center items-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cobalt"></div>
         </div>
       ) : filteredDoctors.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-2xl border border-gray-200">
-          <span className="text-4xl block mb-2">🔍</span>
-          <h3 className="text-lg font-bold text-gray-800">No doctors found</h3>
-          <p className="text-sm text-gray-500 mt-1">
+        <div className="editorial-card p-12 text-center">
+          <h3 className="font-display text-lg font-bold text-ink">No doctors found</h3>
+          <p className="text-xs text-muted mt-1">
             Try adjusting your search query or department filter.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredDoctors.map((doc) => (
             <div
               key={doc.id}
-              className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+              className="editorial-card p-6 flex flex-col justify-between hover:border-cobalt/40"
             >
               <div>
-                {/* Top Badge: Department & Status */}
-                <div className="flex justify-between items-start mb-3">
-                  <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                <div className="flex justify-between items-start gap-2 mb-3">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded bg-cobalt-tint text-cobalt border border-cobalt/15">
                     {doc.department_name || 'General OPD'}
                   </span>
                   {doc.is_available ? (
-                    <span className="flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-clinical-success bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-clinical-success animate-pulse" />
                       Available Today
                     </span>
                   ) : (
-                    <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    <span className="text-[11px] font-semibold text-muted bg-surface px-2.5 py-0.5 rounded-full border border-hairline">
                       Off Duty
                     </span>
                   )}
                 </div>
 
-                {/* Doctor Name & Qualifications */}
-                <h3 className="text-xl font-bold text-gray-900 tracking-tight">
+                <h3 className="font-display text-lg font-bold text-ink">
                   {doc.doctor_name}
                 </h3>
-                <p className="text-xs font-medium text-gray-500 mt-0.5">
-                  {doc.specialization} • {doc.qualification || 'MBBS'}
+                <p className="text-xs text-muted mt-0.5">
+                  {doc.specialization} · {doc.qualification || 'MBBS'}
                 </p>
 
-                {/* Rating & Leave Summary */}
-                <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold">
-                    ⭐ {doc.average_rating !== null && doc.average_rating !== undefined ? `${doc.average_rating}/5` : 'New'} ({doc.feedback_count || 0} reviews)
+                <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-clinical-warning border border-amber-200 font-mono text-[11px] font-semibold">
+                    ★ {doc.average_rating !== null && doc.average_rating !== undefined ? `${doc.average_rating}/5` : 'New'} ({doc.feedback_count || 0})
                   </span>
                   {Array.isArray(doc.upcoming_leaves) && doc.upcoming_leaves.length > 0 && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-semibold">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-rose-50 text-clinical-danger border border-rose-200 font-mono text-[10px] font-semibold">
                       Leave: {doc.upcoming_leaves[0].start_date}
                     </span>
                   )}
                 </div>
 
-                {/* Info Cards: Room, Time, Fee */}
-                <div className="grid grid-cols-3 gap-2 mt-5 p-3 bg-gray-50 rounded-xl border border-gray-100 text-center">
+                <div className="grid grid-cols-3 gap-2 mt-4 p-3 bg-surface rounded-xl border border-hairline text-center">
                   <div>
-                    <span className="block text-[10px] uppercase font-bold text-gray-400">Clinic Room</span>
-                    <span className="text-xs font-bold text-gray-800 mt-0.5 block">
-                      📍 {doc.room_number || 'OPD-101'}
+                    <span className="block font-mono text-[10px] uppercase text-muted">Room</span>
+                    <span className="font-mono text-xs font-bold text-ink mt-0.5 block">
+                      {doc.room_number || 'OPD-101'}
                     </span>
                   </div>
                   <div>
-                    <span className="block text-[10px] uppercase font-bold text-gray-400">Avg Consult</span>
-                    <span className="text-xs font-bold text-blue-700 mt-0.5 block">
-                      ⏱️ {doc.avg_consult_minutes || 15}m
+                    <span className="block font-mono text-[10px] uppercase text-muted">Avg Visit</span>
+                    <span className="font-mono text-xs font-bold text-cobalt mt-0.5 block">
+                      {doc.avg_consult_minutes || 15}m
                     </span>
                   </div>
                   <div>
-                    <span className="block text-[10px] uppercase font-bold text-gray-400">Fee</span>
-                    <span className="text-xs font-bold text-emerald-700 mt-0.5 block">
+                    <span className="block font-mono text-[10px] uppercase text-muted">Fee</span>
+                    <span className="font-mono text-xs font-bold text-clinical-success mt-0.5 block">
                       ₹{doc.consultation_fee}
                     </span>
                   </div>
                 </div>
 
-                {/* Available Days */}
-                <div className="mt-4 text-xs text-gray-600 flex items-center justify-between">
-                  <span className="text-gray-400">OPD Days:</span>
-                  <span className="font-medium text-gray-800">{doc.available_days || 'Mon, Tue, Wed, Thu, Fri'}</span>
+                <div className="mt-3.5 text-xs text-muted flex items-center justify-between">
+                  <span>OPD Days</span>
+                  <span className="font-medium text-ink">{doc.available_days || 'Mon–Fri'}</span>
                 </div>
               </div>
 
-              {/* Action Button */}
-              <div className="mt-6 pt-4 border-t border-gray-100">
+              <div className="mt-5 pt-4 border-t border-hairline">
                 <button
-                  onClick={() => setBookingDoctor(doc)}
+                  type="button"
+                  onClick={() => navigate(`/patient/book-slot/${doc.id}`)}
                   disabled={!doc.is_available}
-                  className="w-full py-2.5 px-4 rounded-xl font-semibold text-xs transition shadow-sm flex items-center justify-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white"
+                  className="w-full editorial-btn-primary py-2.5"
                 >
-                  <span>🎟️</span>
-                  <span>Book Consultation Token</span>
+                  Reserve Consultation Slot →
                 </button>
               </div>
             </div>

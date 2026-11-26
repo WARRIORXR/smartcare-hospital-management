@@ -12,8 +12,11 @@ export const authService = {
     return response.data;
   },
 
-  logout: async (refresh) => {
-    const response = await api.post('/accounts/logout/', { refresh });
+  logout: async (refresh, accessToken = null) => {
+    const config = accessToken
+      ? { headers: { Authorization: `Bearer ${accessToken}` } }
+      : undefined;
+    const response = await api.post('/accounts/logout/', { refresh }, config);
     return response.data;
   },
 
