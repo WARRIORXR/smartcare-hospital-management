@@ -109,7 +109,7 @@ const MyTokens = () => {
 
   // Filter tokens
   const filteredTokens = tokens.filter((t) => {
-    if (filter === 'active') return t.status === 'waiting' || t.status === 'in_progress';
+    if (filter === 'active') return ['waiting', 'called', 'in_progress'].includes(t.status);
     if (filter === 'history') return t.status === 'completed' || t.status === 'cancelled' || t.status === 'skipped';
     return true;
   });
@@ -215,7 +215,7 @@ const MyTokens = () => {
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Active Queue ({tokens.filter((t) => t.status === 'waiting' || t.status === 'in_progress').length})
+          Active Queue ({tokens.filter((t) => ['waiting', 'called', 'in_progress'].includes(t.status)).length})
         </button>
         <button
           onClick={() => setFilter('history')}
@@ -503,10 +503,7 @@ const MyTokens = () => {
         <BookTokenModal
           doctors={doctors}
           onClose={() => setShowBookModal(false)}
-          onSuccess={() => {
-            setShowBookModal(false);
-            loadData();
-          }}
+          onSuccess={loadData}
         />
       )}
 
