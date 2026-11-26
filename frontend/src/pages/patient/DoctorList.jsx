@@ -252,7 +252,6 @@ const DoctorList = () => {
         <BookTokenModal
           doctor={bookingDoctor}
           onClose={() => setBookingDoctor(null)}
-          onSuccess={() => setBookingDoctor(null)}
         />
       )}
     </div>
