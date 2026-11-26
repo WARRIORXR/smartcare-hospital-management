@@ -272,10 +272,6 @@ const BookTokenPage = () => {
         <BookTokenModal
           doctor={selectedDoctorForBooking}
           onClose={() => setSelectedDoctorForBooking(null)}
-          onSuccess={() => {
-            setSelectedDoctorForBooking(null);
-            navigate('/patient/tokens');
-          }}
         />
       )}
     </div>
