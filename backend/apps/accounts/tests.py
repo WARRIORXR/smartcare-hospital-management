@@ -104,6 +104,11 @@ class AccountsSecurityAndFeaturesTests(APITestCase):
     def test_jwt_refresh_rotation_and_blacklist(self):
         login_res = self._login('pat_a', 'Patient@Strong99')
         self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login_res.data['access']}")
+        profile_res = self.client.get('/api/accounts/profile/')
+        self.assertEqual(profile_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(profile_res.data['user']['username'], 'pat_a')
+
         old_refresh = login_res.data['refresh']
 
         refresh_res = self.client.post('/api/auth/refresh/', {'refresh': old_refresh}, format='json')
