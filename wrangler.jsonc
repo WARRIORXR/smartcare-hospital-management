@@ -1,5 +1,37 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "smartcare-hospital",
-  "pages_build_output_dir": "frontend/dist",
-  "compatibility_date": "2026-11-23"
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-11-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "frontend/dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "smartcare-db",
+      "database_id": "32b3451d-465d-4d19-a69a-65f89a6c1757",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "vars": {
+    "DEMO_MODE": "true",
+    "ALLOW_DEMO_ADMIN": "false"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  }
 }

@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local `wrangler dev` (never commit .dev.vars)
+JWT_SECRET=replace-with-long-random-secret
+DEMO_MODE=true
+ALLOW_DEMO_ADMIN=false
