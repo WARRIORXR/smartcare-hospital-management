@@ -11,7 +11,7 @@
  *  - Unified Patient Journey Timeline Modal (Modules 1-5)
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -31,6 +31,7 @@ const DoctorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [togglingDuty, setTogglingDuty] = useState(false);
+  const actionRef = useRef(false);
   const [alert, setAlert] = useState({ type: '', message: '' });
   const [activeTab, setActiveTab] = useState('waiting'); // 'waiting' | 'completed' | 'skipped' | 'admitted'
 
@@ -145,6 +146,8 @@ const DoctorDashboard = () => {
 
   // Duty Status & Leave Handlers
   const handleToggleAvailability = async () => {
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       setTogglingDuty(true);
       const nextStatus = !(queueData?.doctor?.is_available ?? true);
@@ -155,11 +158,14 @@ const DoctorDashboard = () => {
       showAlert('error', err.response?.data?.detail || 'Could not toggle availability status.');
     } finally {
       setTogglingDuty(false);
+      actionRef.current = false;
     }
   };
 
   const handleCreateLeave = async (e) => {
     e.preventDefault();
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       setActionLoading(true);
       await hospitalService.createLeave(leaveForm);
@@ -174,6 +180,7 @@ const DoctorDashboard = () => {
       showAlert('error', err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || 'Failed to schedule leave.');
     } finally {
       setActionLoading(false);
+      actionRef.current = false;
     }
   };
 
@@ -191,6 +198,8 @@ const DoctorDashboard = () => {
 
   // Call Next Patient
   const handleCallNext = async (tokenId = null) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       setActionLoading(true);
       const res = await opdService.callNextPatient(tokenId);
@@ -201,11 +210,14 @@ const DoctorDashboard = () => {
       showAlert('error', err.response?.data?.detail || 'Failed to call next patient.');
     } finally {
       setActionLoading(false);
+      actionRef.current = false;
     }
   };
 
   // Mark Consultation Complete
   const handleComplete = async (tokenId = null) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       setActionLoading(true);
       const res = await opdService.completeConsultation(tokenId);
@@ -216,11 +228,14 @@ const DoctorDashboard = () => {
       showAlert('error', err.response?.data?.detail || 'Failed to complete visit.');
     } finally {
       setActionLoading(false);
+      actionRef.current = false;
     }
   };
 
   // Skip Patient
   const handleSkip = async (tokenId = null) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       setActionLoading(true);
       const res = await opdService.skipPatient(tokenId);
@@ -231,6 +246,7 @@ const DoctorDashboard = () => {
       showAlert('error', err.response?.data?.detail || 'Failed to skip patient.');
     } finally {
       setActionLoading(false);
+      actionRef.current = false;
     }
   };
 

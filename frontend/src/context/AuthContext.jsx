@@ -32,21 +32,61 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('smartcare_access_token');
-    const savedUser = localStorage.getItem('smartcare_user');
+    let active = true;
 
-    if (savedToken && savedUser) {
+    const bootstrapAuth = async () => {
+      const savedToken = localStorage.getItem('smartcare_access_token');
+      const savedUserRaw = localStorage.getItem('smartcare_user');
+
+      if (!savedToken) {
+        localStorage.removeItem('smartcare_user');
+        if (active) setLoading(false);
+        return;
+      }
+
+      if (savedUserRaw) {
+        try {
+          const parsed = JSON.parse(savedUserRaw);
+          if (active) {
+            setToken(savedToken);
+            setUser(parsed);
+          }
+        } catch {
+          localStorage.removeItem('smartcare_access_token');
+          localStorage.removeItem('smartcare_refresh_token');
+          localStorage.removeItem('smartcare_user');
+          if (active) {
+            setToken(null);
+            setUser(null);
+            setLoading(false);
+          }
+          return;
+        }
+      }
+
+      // Verify authoritative role & user identity against server JWT profile
       try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      } catch (err) {
-        console.error('Failed to parse cached user data', err);
+        const profileData = await authService.getProfile();
+        if (active && profileData?.user) {
+          localStorage.setItem('smartcare_user', JSON.stringify(profileData.user));
+          setToken(localStorage.getItem('smartcare_access_token') || savedToken);
+          setUser(profileData.user);
+        }
+      } catch {
         localStorage.removeItem('smartcare_access_token');
         localStorage.removeItem('smartcare_refresh_token');
         localStorage.removeItem('smartcare_user');
+        if (active) {
+          setToken(null);
+          setUser(null);
+        }
+      } finally {
+        if (active) setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+
+    bootstrapAuth();
+    return () => { active = false; };
   }, []);
 
   const login = async (username, password) => {

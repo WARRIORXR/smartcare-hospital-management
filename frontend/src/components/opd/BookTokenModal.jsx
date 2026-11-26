@@ -5,12 +5,13 @@
  * with live Doctor Leave verification.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import opdService from '../../services/opdService';
 
 const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
   const navigate = useNavigate();
+  const submittingRef = useRef(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const maxDateObj = new Date();
@@ -44,6 +45,7 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     setError('');
 
     if (!selectedDoctorId) {
@@ -51,6 +53,7 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
       return;
     }
 
+    submittingRef.current = true;
     try {
       setLoading(true);
       const token = await opdService.generateToken({
@@ -64,7 +67,6 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
       setGeneratedToken(token);
       if (onSuccess) onSuccess(token);
     } catch (err) {
-      console.error('Failed to generate token', err);
       const data = err.response?.data;
       if (data) {
         if (data.non_field_errors) {
@@ -84,6 +86,7 @@ const BookTokenModal = ({ doctor, doctors = [], onClose, onSuccess }) => {
         setError('Network error while booking token.');
       }
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };

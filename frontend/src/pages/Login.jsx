@@ -9,7 +9,7 @@
  *  - Fake-data educational sandbox notice & Render cold-start note
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -63,6 +63,7 @@ const Login = () => {
   const { user, isAuthenticated, login, getDashboardPath } = useAuth();
   const { lang, setLang, t } = useLanguage();
   const navigate = useNavigate();
+  const submittingRef = useRef(false);
 
   const [formData, setFormData] = useState({
     username: IS_DEMO_MODE ? 'rahul.kumar' : '',
@@ -90,6 +91,7 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     setError('');
 
     if (!formData.username.trim() || !formData.password) {
@@ -97,18 +99,24 @@ const Login = () => {
       return;
     }
 
+    submittingRef.current = true;
     try {
       setLoading(true);
       const loggedUser = await login(formData.username.trim(), formData.password);
       navigate(getDashboardPath(loggedUser.role), { replace: true });
     } catch (err) {
-      console.error('Login error:', err);
-      const errorMsg =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Invalid username or password. Please verify and try again.';
-      setError(errorMsg);
+      const status = err?.response?.status;
+      if (status === 429) {
+        setError('Too many login attempts. Please wait a minute and try again.');
+      } else {
+        const errorMsg =
+          err.response?.data?.detail ||
+          err.response?.data?.message ||
+          'Invalid username or password. Please verify and try again.';
+        setError(errorMsg);
+      }
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };

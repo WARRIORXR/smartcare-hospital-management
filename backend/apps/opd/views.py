@@ -6,6 +6,7 @@ Doctor Live Queue Management, and Role-Secured Display Screen Data.
 """
 
 from datetime import datetime
+from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -63,11 +64,14 @@ class TokenGenerateView(APIView):
         if request.user.role not in ['patient', 'reception', 'admin', 'doctor'] and not request.user.is_staff:
             return Response({"detail": "Not authorized to generate OPD tokens."}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = TokenGenerateSerializer(
-            data=request.data,
-            context={'request': request}
-        )
-        if serializer.is_valid():
+        with transaction.atomic():
+            serializer = TokenGenerateSerializer(
+                data=request.data,
+                context={'request': request}
+            )
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
             token = serializer.save()
             record_audit_log(
                 request,
@@ -81,8 +85,6 @@ class TokenGenerateView(APIView):
             if token.appointment_date == timezone.now().date():
                 dispatch_queue_proximity_notifications(token.doctor, token.appointment_date)
             return Response(TokenSerializer(token).data, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class DoctorAvailableSlotsView(APIView):
@@ -332,43 +334,44 @@ class DoctorCallNextView(APIView):
         today = timezone.now().date()
         target_token_id = request.data.get('token_id')
 
-        if target_token_id:
-            next_token = Token.objects.filter(
-                id=target_token_id,
-                doctor=doctor,
-                appointment_date=today,
-                status__in=['waiting', 'skipped']
-            ).first()
+        with transaction.atomic():
+            if target_token_id:
+                next_token = Token.objects.select_for_update().filter(
+                    id=target_token_id,
+                    doctor=doctor,
+                    appointment_date=today,
+                    status__in=['waiting', 'skipped']
+                ).first()
+                if not next_token:
+                    return Response(
+                        {"detail": "Selected token is not available in waiting or skipped queue."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                next_token = Token.objects.select_for_update().filter(
+                    doctor=doctor, appointment_date=today, status='waiting'
+                ).annotate(priority_rank=get_priority_order()).order_by('priority_rank', 'token_number').first()
+
             if not next_token:
-                return Response(
-                    {"detail": "Selected token is not available in waiting or skipped queue."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        else:
-            next_token = Token.objects.filter(
-                doctor=doctor, appointment_date=today, status='waiting'
-            ).annotate(priority_rank=get_priority_order()).order_by('priority_rank', 'token_number').first()
+                return Response({"detail": "No patients currently waiting in queue."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not next_token:
-            return Response({"detail": "No patients currently waiting in queue."}, status=status.HTTP_404_NOT_FOUND)
+            prev_called = Token.objects.select_for_update().filter(
+                doctor=doctor, appointment_date=today, status='called'
+            ).exclude(id=next_token.id).first()
+            if prev_called:
+                prev_called.status = 'completed'
+                prev_called.save()
 
-        prev_called = Token.objects.filter(
-            doctor=doctor, appointment_date=today, status='called'
-        ).exclude(id=next_token.id).first()
-        if prev_called:
-            prev_called.status = 'completed'
-            prev_called.save()
+            next_token.status = 'called'
+            next_token.save()
 
-        next_token.status = 'called'
-        next_token.save()
-
-        queue, _ = Queue.objects.get_or_create(
-            doctor=doctor,
-            queue_date=today,
-            defaults={'avg_consult_minutes': doctor.avg_consult_minutes or 15}
-        )
-        queue.current_token = next_token.token_number
-        queue.save()
+            queue, _ = Queue.objects.get_or_create(
+                doctor=doctor,
+                queue_date=today,
+                defaults={'avg_consult_minutes': doctor.avg_consult_minutes or 15}
+            )
+            queue.current_token = next_token.token_number
+            queue.save()
 
         sent_alerts = dispatch_queue_proximity_notifications(doctor, today)
         record_audit_log(
@@ -401,16 +404,17 @@ class DoctorCompleteView(APIView):
         today = timezone.now().date()
         token_id = request.data.get('token_id')
 
-        if token_id:
-            token = Token.objects.filter(id=token_id, doctor=doctor).first()
-        else:
-            token = Token.objects.filter(doctor=doctor, appointment_date=today, status='called').first()
+        with transaction.atomic():
+            if token_id:
+                token = Token.objects.select_for_update().filter(id=token_id, doctor=doctor).first()
+            else:
+                token = Token.objects.select_for_update().filter(doctor=doctor, appointment_date=today, status='called').first()
 
-        if not token:
-            return Response({"detail": "No active called patient to complete."}, status=status.HTTP_400_BAD_REQUEST)
+            if not token or token.status == 'completed':
+                return Response({"detail": "No active called patient to complete."}, status=status.HTTP_400_BAD_REQUEST)
 
-        token.status = 'completed'
-        token.save()
+            token.status = 'completed'
+            token.save()
         dispatch_queue_proximity_notifications(doctor, today)
 
         return Response({

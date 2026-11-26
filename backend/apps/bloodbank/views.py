@@ -16,6 +16,7 @@ from rest_framework import status, generics, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 from drf_spectacular.types import OpenApiTypes
@@ -141,41 +142,45 @@ class BloodStockUpdateView(APIView):
         notes = data.get('notes', '')
         donor_name = data.get('donor_name', '')
 
-        # Find or create stock record
-        stock, _ = BloodStock.objects.get_or_create(
-            blood_group=blood_group,
-            defaults={'minimum_threshold': 3, 'expiry_date': expiry_date}
-        )
-
-        previous_units = stock.units_available
-
-        if action == 'set':
-            stock.units_available = units
-        elif action == 'add':
-            stock.units_available += units
-        elif action == 'deduct':
-            if stock.units_available < units:
-                return Response(
-                    {"error": f"Cannot deduct {units} units. Only {stock.units_available} units of {blood_group} are available in stock."},
-                    status=status.HTTP_400_BAD_REQUEST
+        with transaction.atomic():
+            # Find or create locked stock record
+            stock = BloodStock.objects.select_for_update().filter(blood_group=blood_group).first()
+            if not stock:
+                stock = BloodStock.objects.create(
+                    blood_group=blood_group,
+                    minimum_threshold=3,
+                    expiry_date=expiry_date,
                 )
-            stock.units_available -= units
 
-        stock.expiry_date = expiry_date
-        stock.save()
+            previous_units = stock.units_available
 
-        # Log batch entry if units were added
-        if action in ['add', 'set'] and units > 0:
-            batch_num = f"BB-{blood_group.replace('+', 'P').replace('-', 'N')}-{timezone.now().strftime('%Y%m%d%H%M%S')}"
-            BloodBatch.objects.create(
-                blood_group=blood_group,
-                units=units if action == 'add' else max(1, units),
-                batch_number=batch_num,
-                expiry_date=expiry_date,
-                donor_name=donor_name,
-                recorded_by=request.user,
-                notes=notes,
-            )
+            if action == 'set':
+                stock.units_available = units
+            elif action == 'add':
+                stock.units_available += units
+            elif action == 'deduct':
+                if stock.units_available < units:
+                    return Response(
+                        {"error": f"Cannot deduct {units} units. Only {stock.units_available} units of {blood_group} are available in stock."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                stock.units_available -= units
+
+            stock.expiry_date = expiry_date
+            stock.save()
+
+            # Log batch entry if units were added
+            if action in ['add', 'set'] and units > 0:
+                batch_num = f"BB-{blood_group.replace('+', 'P').replace('-', 'N')}-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+                BloodBatch.objects.create(
+                    blood_group=blood_group,
+                    units=units if action == 'add' else max(1, units),
+                    batch_number=batch_num,
+                    expiry_date=expiry_date,
+                    donor_name=donor_name,
+                    recorded_by=request.user,
+                    notes=notes,
+                )
 
         updated_serializer = BloodStockSerializer(stock)
 
@@ -435,7 +440,6 @@ class BloodRequestStatusUpdateView(APIView):
     @extend_schema(request={'application/json': {'type': 'object', 'properties': {'status': {'type': 'string'}, 'rejection_reason': {'type': 'string'}}}}, responses={200: OpenApiTypes.OBJECT})
     def patch(self, request, pk):
         from django.shortcuts import get_object_or_404
-        blood_request = get_object_or_404(BloodRequest, pk=pk)
 
         new_status = request.data.get('status')
         rejection_reason = request.data.get('rejection_reason', '')
@@ -447,23 +451,32 @@ class BloodRequestStatusUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if new_status == 'fulfilled' and blood_request.status != 'fulfilled':
-            # Deduct units from stock
-            stock = BloodStock.objects.filter(blood_group=blood_request.blood_group).first()
-            if not stock or stock.units_available < blood_request.units_required:
+        with transaction.atomic():
+            blood_request = get_object_or_404(BloodRequest.objects.select_for_update(), pk=pk)
+
+            # Terminal states cannot be re-fulfilled or reverted (prevents double stock deduction)
+            if blood_request.status in ['fulfilled', 'rejected', 'cancelled']:
                 return Response(
-                    {"error": f"Insufficient {blood_request.blood_group} blood units in stock to fulfill this request."},
+                    {"error": f"Request #{blood_request.id} is already {blood_request.status} and cannot be modified."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            stock.units_available -= blood_request.units_required
-            stock.save()
-            blood_request.units_provided = blood_request.units_required
 
-        blood_request.status = new_status
-        blood_request.reviewed_by = request.user
-        if rejection_reason:
-            blood_request.rejection_reason = rejection_reason
-        blood_request.save()
+            if new_status == 'fulfilled':
+                stock = BloodStock.objects.select_for_update().filter(blood_group=blood_request.blood_group).first()
+                if not stock or stock.units_available < blood_request.units_required:
+                    return Response(
+                        {"error": f"Insufficient {blood_request.blood_group} blood units in stock to fulfill this request."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                stock.units_available -= blood_request.units_required
+                stock.save()
+                blood_request.units_provided = blood_request.units_required
+
+            blood_request.status = new_status
+            blood_request.reviewed_by = request.user
+            if rejection_reason:
+                blood_request.rejection_reason = rejection_reason
+            blood_request.save()
 
         record_audit_log(
             request,

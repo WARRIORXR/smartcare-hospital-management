@@ -56,3 +56,30 @@ class BloodBankSecurityTests(APITestCase):
         match = self.client.get('/api/bloodbank/donors/matching/?blood_group=O-')
         self.assertEqual(match.status_code, status.HTTP_200_OK)
         self.assertEqual(match.data['matching_donors_count'], 1)
+
+    def test_terminal_blood_request_cannot_be_re_fulfilled_or_reverted(self):
+        self.client.force_authenticate(user=self.bb_user)
+        # Ensure sufficient stock (5 units A+)
+        self.client.post('/api/bloodbank/stock/update/', {
+            'blood_group': 'A+', 'units': 5, 'action': 'set',
+            'expiry_date': (timezone.now().date() + timedelta(days=30)).isoformat()
+        }, format='json')
+        req_res = self.client.post('/api/bloodbank/requests/', {
+            'patient': self.other_pat.id,
+            'blood_group': 'A+',
+            'units_required': 2,
+            'priority': 'urgent',
+        }, format='json')
+        self.assertEqual(req_res.status_code, status.HTTP_201_CREATED)
+        req_id = req_res.data['request']['id']
+
+        first_fulfill = self.client.patch(f'/api/bloodbank/requests/{req_id}/status/', {'status': 'fulfilled'}, format='json')
+        self.assertEqual(first_fulfill.status_code, status.HTTP_200_OK)
+        self.assertEqual(BloodStock.objects.get(blood_group='A+').units_available, 3)
+
+        # Second fulfill or revert must be rejected cleanly without double-deducting stock
+        second_fulfill = self.client.patch(f'/api/bloodbank/requests/{req_id}/status/', {'status': 'fulfilled'}, format='json')
+        self.assertEqual(second_fulfill.status_code, status.HTTP_400_BAD_REQUEST)
+        revert_reject = self.client.patch(f'/api/bloodbank/requests/{req_id}/status/', {'status': 'rejected'}, format='json')
+        self.assertEqual(revert_reject.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(BloodStock.objects.get(blood_group='A+').units_available, 3)

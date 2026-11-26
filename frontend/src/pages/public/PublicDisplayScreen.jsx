@@ -26,6 +26,7 @@ const PublicDisplayScreen = () => {
   const [activeDoctorId, setActiveDoctorId] = useState(doctorId || '');
   const [doctors, setDoctors] = useState([]);
   const [displayData, setDisplayData] = useState(null);
+  const [displayError, setDisplayError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -61,10 +62,11 @@ const PublicDisplayScreen = () => {
   // Fetch Display Data (Every 5 seconds)
   const fetchDisplay = async () => {
     const targetId = doctorId || activeDoctorId;
-    if (!targetId || !isDisplayAuthorized) return;
+    if (!targetId || !isDisplayAuthorized) return false;
 
     try {
       const data = await opdService.getPublicDisplayData(targetId);
+      setDisplayError(null);
       setDisplayData(data);
 
       // Voice announcement if token changed
@@ -80,8 +82,16 @@ const PublicDisplayScreen = () => {
           window.speechSynthesis.speak(utterance);
         }
       }
+      return true;
     } catch (err) {
-      console.error('Failed to fetch public TV display data', err);
+      const status = err?.response?.status;
+      setDisplayData(null);
+      if (status === 404 || status === 400) {
+        setDisplayError(`Clinic display screen unavailable for Doctor ID "${targetId}".`);
+        return false;
+      }
+      setDisplayError('Unable to reach live queue display service.');
+      return true;
     } finally {
       setLoading(false);
     }
@@ -89,10 +99,19 @@ const PublicDisplayScreen = () => {
 
   useEffect(() => {
     if (!isDisplayAuthorized) return;
-    fetchDisplay();
-    // 5-second interval auto-refresh for live display
-    const interval = setInterval(fetchDisplay, 5000);
-    return () => clearInterval(interval);
+    let active = true;
+    let interval = null;
+
+    setDisplayError(null);
+    fetchDisplay().then((shouldPoll) => {
+      if (!active || !shouldPoll) return;
+      interval = setInterval(fetchDisplay, 5000);
+    });
+
+    return () => {
+      active = false;
+      if (interval) clearInterval(interval);
+    };
   }, [isDisplayAuthorized, doctorId, activeDoctorId, soundEnabled]);
 
   // Defensive Guard: Only authorized clinical/front-desk staff (Doctor / Admin / Reception) can view Clinic Screen
@@ -219,6 +238,25 @@ const PublicDisplayScreen = () => {
       )}
 
       {/* ─── MAIN TV STAGE (2 COLUMNS) ─── */}
+      {displayError ? (
+        <main className="flex-1 flex items-center justify-center p-8">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
+            <div className="text-4xl">📺</div>
+            <h2 className="text-xl font-black text-white">Clinic Display Not Found</h2>
+            <p className="text-sm text-rose-300">{displayError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setDisplayError(null);
+                navigate('/display');
+              }}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer"
+            >
+              Switch to Default Clinic Display
+            </button>
+          </div>
+        </main>
+      ) : (
       <main className="flex-1 p-6 sm:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-8xl mx-auto w-full">
         {/* ─── LEFT: NOW SERVING (HERO - 7 COLS) ─── */}
         <section className="lg:col-span-7 bg-gradient-to-br from-slate-900 via-slate-900 to-blue-950/60 border-2 border-blue-500/40 rounded-3xl p-8 sm:p-12 flex flex-col justify-between shadow-2xl relative overflow-hidden">
@@ -374,6 +412,7 @@ const PublicDisplayScreen = () => {
           </div>
         </section>
       </main>
+      )}
 
       {/* ─── TV FOOTER TICKER ─── */}
       <footer className="bg-slate-900 border-t border-slate-800 px-6 py-3 flex flex-wrap justify-between items-center text-xs text-slate-400">

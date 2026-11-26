@@ -6,7 +6,7 @@
  *  - Reception / Doctors / Admins generate itemized invoices from tokens or admissions.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -27,7 +27,9 @@ const BillingPage = () => {
   const [patients, setPatients] = useState([]);
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [payingId, setPayingId] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const actionRef = useRef(false);
 
   const [showGenModal, setShowGenModal] = useState(false);
   const [genForm, setGenForm] = useState({
@@ -72,17 +74,25 @@ const BillingPage = () => {
   }
 
   const handlePay = async (invId, method = 'upi') => {
+    if (actionRef.current) return;
+    actionRef.current = true;
+    setPayingId(invId);
     try {
       await clinicalService.payInvoice(invId, method);
       setMsg({ type: 'success', text: `Invoice paid cleanly via ${method.toUpperCase()}. You may now download the paid PDF receipt.` });
       await loadData();
     } catch (err) {
       setMsg({ type: 'error', text: err.response?.data?.detail || 'Payment failed.' });
+    } finally {
+      setPayingId(null);
+      actionRef.current = false;
     }
   };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       setSubmitting(true);
       const payload = {
@@ -108,6 +118,7 @@ const BillingPage = () => {
     } catch (err) {
       setMsg({ type: 'error', text: err.response?.data?.detail || 'Failed to generate invoice.' });
     } finally {
+      actionRef.current = false;
       setSubmitting(false);
     }
   };
@@ -204,9 +215,10 @@ const BillingPage = () => {
                   {inv.status === 'unpaid' && (
                     <button
                       onClick={() => handlePay(inv.id, 'upi')}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                      disabled={payingId === inv.id}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
                     >
-                      💳 {t('payNow')} (UPI)
+                      {payingId === inv.id ? 'Processing...' : `💳 ${t('payNow')} (UPI)`}
                     </button>
                   )}
                   <button

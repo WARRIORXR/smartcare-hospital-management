@@ -6,7 +6,7 @@
  *  - Patients: Read & download ONLY their own medical records.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -28,6 +28,7 @@ const MedicalRecordsPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [filterType, setFilterType] = useState('all');
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const submittingRef = useRef(false);
 
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -72,6 +73,8 @@ const MedicalRecordsPage = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setMsg({ type: '', text: '' });
     try {
       setSubmitting(true);
@@ -117,6 +120,7 @@ const MedicalRecordsPage = () => {
       const detail = err.response?.data?.attachment?.[0] || err.response?.data?.detail || 'Failed to save medical record.';
       setMsg({ type: 'error', text: detail });
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };

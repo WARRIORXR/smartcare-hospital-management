@@ -16,7 +16,7 @@
  *  - Real-time auto-refresh option (5s polling)
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import bedService from '../../services/bedService';
@@ -51,6 +51,7 @@ const BedManagementDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const actionRef = useRef(false);
 
   const [summary, setSummary] = useState({
     total_beds: 0,
@@ -182,6 +183,8 @@ const BedManagementDashboard = () => {
 
   // Handle Quick Status Change
   const handleStatusChange = async (bedId, newStatus) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       await bedService.updateBedStatus(bedId, newStatus);
       setSuccessMsg(`Bed status successfully updated to ${newStatus.toUpperCase()}`);
@@ -191,12 +194,16 @@ const BedManagementDashboard = () => {
     } catch (err) {
       console.error('Failed to update bed status:', err);
       alert('Failed to update bed status: ' + (err.response?.data?.error || err.message));
+    } finally {
+      actionRef.current = false;
     }
   };
 
   // Handle Delete Bed
   const handleDeleteBed = async (bedId, bedNumber) => {
     if (!window.confirm(`Are you sure you want to remove Bed ${bedNumber}?`)) return;
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       await bedService.deleteBed(bedId);
       setSuccessMsg(`Bed ${bedNumber} removed successfully.`);
@@ -205,6 +212,8 @@ const BedManagementDashboard = () => {
     } catch (err) {
       console.error('Failed to delete bed:', err);
       alert('Failed to delete bed: ' + (err.response?.data?.error || err.message));
+    } finally {
+      actionRef.current = false;
     }
   };
 
@@ -212,15 +221,19 @@ const BedManagementDashboard = () => {
   const handleDischargePatient = async (admissionId, bedNumber, patientName = 'Patient') => {
     const notes = prompt(`Enter discharge summary notes for ${patientName}:`, 'Patient recovered and discharged.');
     if (notes === null) return; // user cancelled
+    if (actionRef.current) return;
+    actionRef.current = true;
 
     try {
-      const res = await bedService.dischargePatient(admissionId, notes);
+      await bedService.dischargePatient(admissionId, notes);
       setSuccessMsg(`Patient ${patientName} discharged. Bed ${bedNumber} is now Available again!`);
       fetchOverview(true);
       setSelectedBedForAction(null);
     } catch (err) {
       console.error('Failed to discharge patient:', err);
       alert('Failed to discharge patient: ' + (err.response?.data?.error || err.message));
+    } finally {
+      actionRef.current = false;
     }
   };
 
@@ -256,6 +269,8 @@ const BedManagementDashboard = () => {
 
   const handleAutoAdmitSubmit = async (e) => {
     e.preventDefault();
+    if (actionRef.current) return;
+    actionRef.current = true;
     try {
       const payload = {
         patient_id: Number(admitForm.patient_id),
@@ -272,6 +287,8 @@ const BedManagementDashboard = () => {
     } catch (err) {
       console.error('Admit failed', err);
       alert(err?.response?.data?.error || 'Failed to admit patient.');
+    } finally {
+      actionRef.current = false;
     }
   };
 

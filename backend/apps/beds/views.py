@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Count, Q
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
@@ -285,63 +286,64 @@ class AutoAdmitPatientView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Check if patient is already actively admitted
-        existing_admission = Admission.objects.filter(patient=patient, status='admitted').first()
-        if existing_admission:
-            return Response(
-                {
-                    "error": f"Patient {patient.user.get_full_name() or patient.user.username} is already admitted to Bed {existing_admission.bed.bed_number} in {existing_admission.bed.ward.name}."
-                },
-                status=status.HTTP_400_BAD_REQUEST
+        with transaction.atomic():
+            # 2. Re-check under transaction lock if patient is already actively admitted
+            existing_admission = Admission.objects.select_for_update().filter(patient=patient, status='admitted').first()
+            if existing_admission:
+                return Response(
+                    {
+                        "error": f"Patient {patient.user.get_full_name() or patient.user.username} is already admitted to Bed {existing_admission.bed.bed_number} in {existing_admission.bed.ward.name}."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 3. Resolve Doctor
+            attending_doctor = None
+            if attending_doctor_id:
+                attending_doctor = Doctor.objects.filter(pk=attending_doctor_id).first()
+            elif hasattr(request.user, 'doctor_profile'):
+                attending_doctor = request.user.doctor_profile
+
+            # 4. Lock & Auto-assign first available bed of selected type
+            available_beds_qs = Bed.objects.select_for_update().filter(
+                ward__ward_type=ward_type,
+                ward__is_active=True,
+                status='available'
+            ).select_related('ward').order_by('ward__floor_number', 'bed_number')
+
+            if preferred_ward_id:
+                assigned_bed = available_beds_qs.filter(ward_id=preferred_ward_id).first() or available_beds_qs.first()
+            else:
+                assigned_bed = available_beds_qs.first()
+
+            if not assigned_bed:
+                total_beds_count = Bed.objects.filter(ward__ward_type=ward_type).count()
+                occupied_count = Bed.objects.filter(ward__ward_type=ward_type, status='occupied').count()
+                return Response({
+                    "error": f"No available beds in {ward_type.upper()} wards. All {total_beds_count} beds are currently occupied or being cleaned.",
+                    "ward_type": ward_type,
+                    "total_beds": total_beds_count,
+                    "occupied_beds": occupied_count,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 5. Mark Bed Occupied
+            assigned_bed.status = 'occupied'
+            assigned_bed.save()
+
+            # 6. Create Admission record
+            admission = Admission.objects.create(
+                patient=patient,
+                bed=assigned_bed,
+                attending_doctor=attending_doctor,
+                token=token,
+                diagnosis=diagnosis,
+                status='admitted',
             )
 
-        # 3. Resolve Doctor
-        attending_doctor = None
-        if attending_doctor_id:
-            attending_doctor = Doctor.objects.filter(pk=attending_doctor_id).first()
-        elif hasattr(request.user, 'doctor_profile'):
-            attending_doctor = request.user.doctor_profile
-
-        # 4. Auto-assign first available bed of selected type
-        available_beds_qs = Bed.objects.filter(
-            ward__ward_type=ward_type,
-            ward__is_active=True,
-            status='available'
-        ).select_related('ward').order_by('ward__floor_number', 'bed_number')
-
-        if preferred_ward_id:
-            assigned_bed = available_beds_qs.filter(ward_id=preferred_ward_id).first() or available_beds_qs.first()
-        else:
-            assigned_bed = available_beds_qs.first()
-
-        if not assigned_bed:
-            total_beds_count = Bed.objects.filter(ward__ward_type=ward_type).count()
-            occupied_count = Bed.objects.filter(ward__ward_type=ward_type, status='occupied').count()
-            return Response({
-                "error": f"No available beds in {ward_type.upper()} wards. All {total_beds_count} beds are currently occupied or being cleaned.",
-                "ward_type": ward_type,
-                "total_beds": total_beds_count,
-                "occupied_beds": occupied_count,
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # 5. Mark Bed Occupied
-        assigned_bed.status = 'occupied'
-        assigned_bed.save()
-
-        # 6. Create Admission record
-        admission = Admission.objects.create(
-            patient=patient,
-            bed=assigned_bed,
-            attending_doctor=attending_doctor,
-            token=token,
-            diagnosis=diagnosis,
-            status='admitted',
-        )
-
-        # 7. Update Token status if linked
-        if token:
-            token.status = 'admitted'
-            token.save()
+            # 7. Update Token status if linked
+            if token:
+                token.status = 'admitted'
+                token.save()
 
         record_audit_log(
             request,
@@ -447,25 +449,26 @@ class AdmissionDischargeView(APIView):
 
     @extend_schema(request=DischargeSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request, pk):
-        admission = get_object_or_404(Admission, pk=pk)
-
-        if admission.status == 'discharged':
-            return Response(
-                {"error": "Patient has already been discharged."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         discharge_notes = request.data.get('discharge_notes', '')
 
-        admission.status = 'discharged'
-        admission.discharge_date = timezone.now()
-        admission.discharge_notes = discharge_notes
-        admission.save()
+        with transaction.atomic():
+            admission = get_object_or_404(Admission.objects.select_for_update(), pk=pk)
 
-        # Update bed status back to 'available' again!
-        bed = admission.bed
-        bed.status = 'available'
-        bed.save()
+            if admission.status == 'discharged':
+                return Response(
+                    {"error": "Patient has already been discharged."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            admission.status = 'discharged'
+            admission.discharge_date = timezone.now()
+            admission.discharge_notes = discharge_notes
+            admission.save()
+
+            # Update bed status back to 'available' again!
+            bed = Bed.objects.select_for_update().get(pk=admission.bed_id)
+            bed.status = 'available'
+            bed.save()
 
         record_audit_log(
             request,

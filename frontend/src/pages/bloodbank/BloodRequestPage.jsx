@@ -9,7 +9,7 @@
  *  - Active Requests tracking with approval/fulfillment actions for medical staff
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import bloodBankService from '../../services/bloodBankService';
 import bedService from '../../services/bedService';
@@ -33,8 +33,10 @@ const BloodRequestPage = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const actionRef = useRef(false);
 
   // Live Stock Cache
   const [liveStock, setLiveStock] = useState({});
@@ -120,14 +122,16 @@ const BloodRequestPage = () => {
   // Handle Form Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (actionRef.current) return;
     setErrorMsg(null);
     setMatchingDonorsAlert(null);
 
     if (!formData.patient_name.trim()) {
-      alert('Please enter patient name.');
+      setErrorMsg('Please enter patient name.');
       return;
     }
 
+    actionRef.current = true;
     try {
       setSubmitting(true);
       const res = await bloodBankService.createRequest({
@@ -173,19 +177,27 @@ const BloodRequestPage = () => {
       console.error('Failed to create blood request:', err);
       setErrorMsg(err.response?.data?.error || 'Failed to submit blood request.');
     } finally {
+      actionRef.current = false;
       setSubmitting(false);
     }
   };
 
   // Staff status update (Approve / Fulfill / Reject)
   const handleUpdateStatus = async (requestId, newStatus) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
+    setUpdatingId(requestId);
+    setErrorMsg(null);
     try {
       const res = await bloodBankService.updateRequestStatus(requestId, newStatus);
-      alert(res.message || `Request marked as ${newStatus.toUpperCase()}`);
+      setSuccessMsg(res.message || `Request marked as ${newStatus.toUpperCase()}`);
       await loadData();
     } catch (err) {
       console.error('Failed to update request:', err);
-      alert(err.response?.data?.error || 'Failed to update request.');
+      setErrorMsg(err.response?.data?.error || 'Failed to update request.');
+    } finally {
+      setUpdatingId(null);
+      actionRef.current = false;
     }
   };
 
@@ -672,14 +684,16 @@ const BloodRequestPage = () => {
                                 <div className="flex justify-end gap-1.5">
                                   <button
                                     onClick={() => handleUpdateStatus(req.id, 'fulfilled')}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition"
+                                    disabled={updatingId === req.id}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-2xs transition"
                                     title="Fulfill and allocate blood units"
                                   >
-                                    Fulfill
+                                    {updatingId === req.id ? '...' : 'Fulfill'}
                                   </button>
                                   <button
                                     onClick={() => handleUpdateStatus(req.id, 'rejected')}
-                                    className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs transition"
+                                    disabled={updatingId === req.id}
+                                    className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-600 font-bold text-xs transition"
                                   >
                                     Reject
                                   </button>

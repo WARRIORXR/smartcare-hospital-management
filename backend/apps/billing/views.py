@@ -7,6 +7,7 @@ and Downloading Formatted PDF Receipts with strict Anti-IDOR checks.
 
 import math
 from decimal import Decimal
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -198,21 +199,22 @@ class InvoicePayView(APIView):
 
     @extend_schema(request={'application/json': {'type': 'object', 'properties': {'payment_method': {'type': 'string'}}}}, responses={200: InvoiceSerializer})
     def post(self, request, pk):
-        invoice = get_object_or_404(Invoice, pk=pk)
-        if not _check_invoice_access(request.user, invoice):
-            return Response({"detail": "Not authorized to pay this invoice."}, status=status.HTTP_403_FORBIDDEN)
-
-        if invoice.status == 'paid':
-            return Response({"detail": "Invoice is already paid."}, status=status.HTTP_400_BAD_REQUEST)
-
         method = (request.data.get('payment_method') or 'upi').lower()
         if method not in ['cash', 'card', 'upi', 'insurance']:
             return Response({"detail": "Invalid payment method."}, status=status.HTTP_400_BAD_REQUEST)
 
-        invoice.status = 'paid'
-        invoice.payment_method = method
-        invoice.paid_at = timezone.now()
-        invoice.save()
+        with transaction.atomic():
+            invoice = get_object_or_404(Invoice.objects.select_for_update(), pk=pk)
+            if not _check_invoice_access(request.user, invoice):
+                return Response({"detail": "Not authorized to pay this invoice."}, status=status.HTTP_403_FORBIDDEN)
+
+            if invoice.status == 'paid':
+                return Response({"detail": "Invoice is already paid."}, status=status.HTTP_400_BAD_REQUEST)
+
+            invoice.status = 'paid'
+            invoice.payment_method = method
+            invoice.paid_at = timezone.now()
+            invoice.save()
 
         record_audit_log(
             request,

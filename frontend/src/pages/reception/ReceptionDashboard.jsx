@@ -8,7 +8,7 @@
  *  - Direct shortcuts to Ward Admissions (/beds), Billing Desk (/billing), and Blood Requests
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -30,6 +30,7 @@ const ReceptionDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const submittingRef = useRef(false);
 
   const [formData, setFormData] = useState({
     patient: '',
@@ -70,6 +71,8 @@ const ReceptionDashboard = () => {
 
   const handleIssueToken = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setMsg({ type: '', text: '' });
     try {
       setSubmitting(true);
@@ -89,6 +92,7 @@ const ReceptionDashboard = () => {
         text: data?.non_field_errors?.[0] || data?.doctor?.[0] || data?.detail || 'Could not generate token.',
       });
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
