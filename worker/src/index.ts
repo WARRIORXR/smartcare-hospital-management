@@ -76,7 +76,9 @@ app.route('/api/billing', billingRoutes);
 app.all('/api/*', (c) => c.json({ detail: 'API endpoint not found.' }, 404));
 
 app.all('*', async (c) => {
-  return c.env.ASSETS.fetch(c.req.raw);
+  const assets = (c.env as Env & { ASSETS?: Fetcher }).ASSETS;
+  if (assets) return assets.fetch(c.req.raw);
+  return c.text('Not Found', 404);
 });
 
 export default {
