@@ -14,7 +14,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import hospitalService from '../../services/hospitalService';
@@ -52,6 +52,8 @@ const AdminDashboard = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAnalyticsRoute = location.pathname.includes('/analytics');
 
   const [analytics, setAnalytics] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -312,6 +314,8 @@ const AdminDashboard = () => {
     },
   };
 
+  const peakDailyTokens = Math.max(0, ...(charts?.daily_token_trend?.data || [0]));
+
   return (
     <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* ───────────────────────────────────────────────────────────── */}
@@ -321,14 +325,16 @@ const AdminDashboard = () => {
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="editorial-eyebrow">
-              Executive Control · {autoRefresh ? 'Live 15s Sync' : 'Manual Sync'}
+              {isAnalyticsRoute ? 'Executive Telemetry' : 'Executive Control'} · {autoRefresh ? '15s Live Sync' : 'Manual Sync'}
             </span>
             <span className="font-mono text-[11px] text-muted">
               Last synced {lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
-            Hospital Operations &amp; Audit
+            {isAnalyticsRoute
+              ? 'Hospital Analytics, Occupancy & Demand Trends'
+              : 'Hospital Operations & Audit'}
           </h1>
           <p className="text-xs sm:text-sm text-muted">
             Signed in as <span className="font-semibold text-ink">{user?.first_name || user?.username}</span>. Real-time metrics across OPD queues, inpatient beds, blood stock, and PHI audit logs.
@@ -355,11 +361,18 @@ const AdminDashboard = () => {
           <button
             type="button"
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`editorial-btn-secondary ${
-              autoRefresh ? 'border-emerald-200 text-clinical-success bg-emerald-50/50' : ''
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-mono font-bold border transition cursor-pointer ${
+              autoRefresh
+                ? 'bg-emerald-50 border-emerald-200 text-clinical-success'
+                : 'bg-surface border-hairline text-muted'
             }`}
           >
-            {autoRefresh ? 'Live (15s)' : 'Paused'}
+            <span
+              className={`w-2 h-2 rounded-full ${
+                autoRefresh ? 'bg-clinical-success' : 'bg-slate-400'
+              }`}
+            />
+            {autoRefresh ? 'AUTO-SYNC ON' : 'SYNC PAUSED'}
           </button>
           <button
             type="button"
@@ -440,17 +453,18 @@ const AdminDashboard = () => {
       {/* Loading & Error States */}
       {loading && !analytics && (
         <div className="py-20 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-sm font-medium text-gray-500">Calculating real-time analytics from database...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-cobalt border-t-transparent mx-auto mb-4"></div>
+          <p className="text-sm font-medium text-muted">Calculating real-time analytics from database...</p>
         </div>
       )}
 
       {error && !analytics && (
-        <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-center">
-          <p className="text-red-700 font-semibold mb-3">{error}</p>
+        <div className="editorial-card p-6 border-rose-200 bg-rose-50/70 rounded-2xl text-center">
+          <p className="text-clinical-danger font-semibold mb-3 text-sm">{error}</p>
           <button
+            type="button"
             onClick={fetchAnalytics}
-            className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition"
+            className="px-4 py-2 bg-clinical-danger text-white font-semibold rounded-lg text-xs hover:opacity-95 transition cursor-pointer"
           >
             Retry Analytics Query
           </button>
@@ -572,34 +586,34 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* Chart.js Visualizations Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 editorial-card p-6 flex flex-col">
+          {/* Chart.js Visualizations Grid (Paper Screen 24 Layout) */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1.55fr_1fr] gap-5">
+            <div className="editorial-card rounded-2xl p-6 flex flex-col">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-5 pb-3 border-b border-hairline">
                 <div>
                   <h3 className="font-display text-base font-bold text-ink">
-                    Blood Bank Inventory vs Safety Floor
+                    7-Day OPD Patient Demand Trend
                   </h3>
                   <p className="text-xs text-muted">
-                    Crimson bars highlight blood groups below the 3-unit clinical threshold.
+                    Daily outpatient arrivals across all clinics.
                   </p>
                 </div>
-                <span className="font-mono px-2.5 py-1 rounded text-[10px] font-bold bg-rose-50 text-clinical-danger border border-rose-200 uppercase">
-                  Min Threshold: 3u
+                <span className="font-mono px-2.5 py-1 rounded-full text-[11px] font-bold bg-cobalt-tint text-cobalt border border-blue-200 uppercase shrink-0">
+                  PEAK: {peakDailyTokens} TOKENS / DAY
                 </span>
               </div>
               <div className="h-64 w-full">
-                <Bar data={bloodStockChartData} options={bloodStockChartOptions} />
+                <Line data={trendChartData} options={trendChartOptions} />
               </div>
             </div>
 
-            <div className="editorial-card p-6 flex flex-col">
+            <div className="editorial-card rounded-2xl p-6 flex flex-col">
               <div className="mb-5 pb-3 border-b border-hairline">
                 <h3 className="font-display text-base font-bold text-ink">
-                  OPD Queue Status Split
+                  OPD Token Status Breakdown
                 </h3>
                 <p className="text-xs text-muted">
-                  Today&apos;s patient tokens across clinical workflow stages.
+                  Today&apos;s workflow split across completed, waiting &amp; triage stages.
                 </p>
               </div>
               <div className="h-64 w-full flex items-center justify-center">
@@ -608,34 +622,49 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="editorial-card p-6 flex flex-col">
-              <div className="mb-5 pb-3 border-b border-hairline">
-                <h3 className="font-display text-base font-bold text-ink">Department Patient Load</h3>
-                <p className="text-xs text-muted">OPD token volume by specialty clinic.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="editorial-card rounded-2xl p-6 flex flex-col">
+              <div className="flex justify-between items-start gap-2 mb-5 pb-3 border-b border-hairline">
+                <div>
+                  <h3 className="font-display text-base font-bold text-ink">Tokens by Department</h3>
+                  <p className="text-xs text-muted">OPD token volume by specialty clinic.</p>
+                </div>
+                <span className="font-mono text-[10px] font-bold text-cobalt uppercase shrink-0">
+                  LIVE QUEUE
+                </span>
               </div>
-              <div className="h-64 w-full">
+              <div className="h-60 w-full">
                 <Bar data={departmentChartData} options={departmentChartOptions} />
               </div>
             </div>
 
-            <div className="editorial-card p-6 flex flex-col">
-              <div className="mb-5 pb-3 border-b border-hairline">
-                <h3 className="font-display text-base font-bold text-ink">Ward Bed Capacity</h3>
-                <p className="text-xs text-muted">Occupied vs available beds per hospital ward.</p>
+            <div className="editorial-card rounded-2xl p-6 flex flex-col">
+              <div className="flex justify-between items-start gap-2 mb-5 pb-3 border-b border-hairline">
+                <div>
+                  <h3 className="font-display text-base font-bold text-ink">Ward Bed Capacity</h3>
+                  <p className="text-xs text-muted">Occupied vs available beds per hospital ward.</p>
+                </div>
+                <span className="font-mono text-[10px] font-bold text-muted uppercase shrink-0">
+                  OCCUPIED VS OPEN
+                </span>
               </div>
-              <div className="h-64 w-full">
+              <div className="h-60 w-full">
                 <Bar data={wardOccupancyChartData} options={wardOccupancyChartOptions} />
               </div>
             </div>
 
-            <div className="editorial-card p-6 flex flex-col">
-              <div className="mb-5 pb-3 border-b border-hairline">
-                <h3 className="font-display text-base font-bold text-ink">7-Day Patient Volume</h3>
-                <p className="text-xs text-muted">Daily outpatient arrivals across all clinics.</p>
+            <div className="editorial-card rounded-2xl p-6 flex flex-col">
+              <div className="flex justify-between items-start gap-2 mb-5 pb-3 border-b border-hairline">
+                <div>
+                  <h3 className="font-display text-base font-bold text-ink">Blood Reserves (8 ABO)</h3>
+                  <p className="text-xs text-muted">Crimson bars indicate below 3-unit floor.</p>
+                </div>
+                <span className="font-mono text-[10px] font-bold text-clinical-danger uppercase shrink-0">
+                  RED &lt; 3 UNITS
+                </span>
               </div>
-              <div className="h-64 w-full">
-                <Line data={trendChartData} options={trendChartOptions} />
+              <div className="h-60 w-full">
+                <Bar data={bloodStockChartData} options={bloodStockChartOptions} />
               </div>
             </div>
           </div>

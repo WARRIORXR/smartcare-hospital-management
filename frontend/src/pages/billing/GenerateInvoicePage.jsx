@@ -1,8 +1,8 @@
 /**
  * src/pages/billing/GenerateInvoicePage.jsx
  * -----------------------------------------
- * Dedicated Staff Page for Itemized OPD & Ward Invoice Generation (/billing/new).
- * Supports URL prefill (?patient=<id>&token=<id>), multi-line charges, discounts, and instant creation.
+ * Dedicated Staff Page for Itemized OPD & Ward Invoice Generation (/billing/new),
+ * aligned with Paper Screen 25 (Generate Itemized Billing Invoice).
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -12,7 +12,16 @@ import clinicalService from '../../services/clinicalService';
 import hospitalService from '../../services/hospitalService';
 import opdService from '../../services/opdService';
 
-const EMPTY_ITEM = () => ({ description: '', category: 'other', quantity: 1, unit_price: '' });
+const EMPTY_ITEM = () => ({ description: '', category: 'lab_test', quantity: 1, unit_price: '' });
+
+const CATEGORY_OPTIONS = [
+  { value: 'lab_test', label: 'Lab / Diagnostic' },
+  { value: 'medication', label: 'Pharmacy / Medication' },
+  { value: 'opd_fee', label: 'OPD Procedure' },
+  { value: 'ward_charge', label: 'Ward / Bed Fee' },
+  { value: 'blood_bank', label: 'Blood Bank Unit' },
+  { value: 'other', label: 'Other Charge' },
+];
 
 const GenerateInvoicePage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -29,6 +38,7 @@ const GenerateInvoicePage = () => {
 
   const [patients, setPatients] = useState([]);
   const [tokens, setTokens] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -47,13 +57,16 @@ const GenerateInvoicePage = () => {
     Promise.all([
       hospitalService.getPatients().catch(() => []),
       opdService.getTokens().catch(() => []),
+      hospitalService.getDoctors().catch(() => []),
     ])
-      .then(([pats, toks]) => {
+      .then(([pats, toks, docs]) => {
         if (!active) return;
         const pList = Array.isArray(pats) ? pats : pats?.results || [];
         const tList = Array.isArray(toks) ? toks : toks?.results || [];
+        const dList = Array.isArray(docs) ? docs : docs?.results || [];
         setPatients(pList);
         setTokens(tList);
+        setDoctors(dList);
         if (!urlPatientId && !urlTokenId && pList.length > 0) {
           setFormData((prev) => ({ ...prev, patient_id: prev.patient_id || String(pList[0].id) }));
         }
@@ -64,7 +77,9 @@ const GenerateInvoicePage = () => {
       .finally(() => {
         if (active) setLoading(false);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [isBillingStaff, urlPatientId, urlTokenId]);
 
   if (authLoading) return <div className="p-8 text-center text-muted text-sm">Checking authorization...</div>;
@@ -79,9 +94,19 @@ const GenerateInvoicePage = () => {
     setExtraItems((prev) => (prev.length === 1 ? [EMPTY_ITEM()] : prev.filter((_, i) => i !== idx)));
   };
 
+  const selectedPatient = patients.find((p) => String(p.id) === String(formData.patient_id));
+  const selectedToken = tokens.find((t) => String(t.id) === String(formData.token_id));
+  const linkedDoctor = selectedToken ? doctors.find((d) => String(d.id) === String(selectedToken.doctor)) : null;
+
+  const estimatedOpdFee = selectedToken
+    ? Math.max(500, Number(linkedDoctor?.consultation_fee || 500))
+    : 0;
+
   const validItems = extraItems.filter((it) => it.description.trim() && Number(it.unit_price) > 0);
   const extraSubtotal = validItems.reduce((sum, it) => sum + Number(it.quantity || 1) * Number(it.unit_price || 0), 0);
   const discountVal = Math.max(0, Number(formData.discount_amount || 0));
+  const estimatedSubtotal = estimatedOpdFee + extraSubtotal;
+  const estimatedTotal = Math.max(0, estimatedSubtotal - discountVal);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -119,10 +144,11 @@ const GenerateInvoicePage = () => {
 
   return (
     <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header Strip */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-hairline">
         <div className="space-y-1">
-          <span className="editorial-eyebrow">Financial Counter • Create Itemized Bill</span>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+          <span className="editorial-eyebrow">Financial Counter · Create Itemized Bill</span>
+          <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">
             Generate Hospital Invoice &amp; Receipt
           </h1>
           <p className="text-xs sm:text-sm text-muted">
@@ -147,10 +173,20 @@ const GenerateInvoicePage = () => {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
-          {/* Left Form */}
+          {/* Left Form Column */}
           <div className="space-y-5">
-            <div className="editorial-card p-6 space-y-4">
-              <h2 className="font-display text-base font-bold text-ink">1. Patient &amp; OPD Visit Link</h2>
+            <div className="bg-canvas rounded-2xl border border-hairline p-6 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-display text-base font-bold text-ink">
+                  1. Patient &amp; OPD / Ward Encounter Link
+                </h2>
+                {urlPatientId && (
+                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-cobalt-tint text-cobalt uppercase">
+                    Encounter Locked
+                  </span>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-ink mb-1.5">Select Patient *</label>
@@ -170,7 +206,9 @@ const GenerateInvoicePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-ink mb-1.5">Link OPD Token (Auto-Bills Consultation)</label>
+                  <label className="block text-xs font-semibold text-ink mb-1.5">
+                    Linked OPD Token (Auto-Bills Consultation)
+                  </label>
                   <select
                     value={formData.token_id}
                     onChange={(e) => {
@@ -209,7 +247,7 @@ const GenerateInvoicePage = () => {
                   <label className="block text-xs font-semibold text-ink mb-1.5">Billing Remarks / Notes</label>
                   <input
                     type="text"
-                    placeholder="e.g. Insurance pre-auth waived"
+                    placeholder="e.g. Cardiology diagnostics + Ward observation"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     className="editorial-input"
@@ -218,17 +256,21 @@ const GenerateInvoicePage = () => {
               </div>
             </div>
 
-            {/* Extra Procedures / Lab Charges */}
-            <div className="editorial-card p-6 space-y-4">
+            {/* Procedures, Labs & Medication Line Items */}
+            <div className="bg-canvas rounded-2xl border border-hairline p-6 space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="font-display text-base font-bold text-ink">2. Additional Diagnostic / Procedure Line Items</h2>
-                  <p className="text-[11px] text-muted">Optional labs, ECG, pharmacy items, or surgical consumables.</p>
+                  <h2 className="font-display text-base font-bold text-ink">
+                    2. Procedures, Labs &amp; Medication Line Items
+                  </h2>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    Add itemized diagnostic scans, ECG panels, pharmacy meds, or blood bank charges.
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={addItemRow}
-                  className="px-3 py-1.5 rounded-lg bg-cobalt-tint hover:bg-cobalt text-cobalt hover:text-white text-xs font-semibold transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-hairline bg-surface hover:bg-cobalt-tint text-cobalt text-xs font-semibold transition cursor-pointer shrink-0"
                 >
                   + Add Line Item
                 </button>
@@ -238,7 +280,7 @@ const GenerateInvoicePage = () => {
                 {extraItems.map((item, idx) => (
                   <div
                     key={idx}
-                    className="grid grid-cols-1 sm:grid-cols-[1.6fr_0.7fr_1fr_auto] gap-2 p-3 rounded-xl bg-surface border border-hairline items-center"
+                    className="grid grid-cols-1 sm:grid-cols-[1.5fr_150px_68px_108px_auto] gap-2.5 p-3 rounded-xl bg-surface border border-hairline items-center"
                   >
                     <input
                       type="text"
@@ -247,29 +289,41 @@ const GenerateInvoicePage = () => {
                       onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
                       className="editorial-input py-2 px-3 text-xs"
                     />
+                    <select
+                      value={item.category}
+                      onChange={(e) => handleItemChange(idx, 'category', e.target.value)}
+                      className="editorial-input h-[38px] text-xs leading-[36px] py-0"
+                    >
+                      {CATEGORY_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="number"
                       min="1"
                       placeholder="Qty"
                       value={item.quantity}
                       onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                      className="editorial-input py-2 px-3 text-xs font-mono"
+                      className="editorial-input py-2 px-2.5 text-xs font-mono text-center"
                     />
                     <input
                       type="number"
                       min="0"
                       step="0.01"
-                      placeholder="Unit Price (₹)"
+                      placeholder="Unit Price ₹"
                       value={item.unit_price}
                       onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
-                      className="editorial-input py-2 px-3 text-xs font-mono"
+                      className="editorial-input py-2 px-2.5 text-xs font-mono font-semibold"
                     />
                     <button
                       type="button"
                       onClick={() => removeItemRow(idx)}
-                      className="px-2.5 py-2 rounded-lg text-xs font-semibold text-clinical-danger hover:bg-rose-50 transition cursor-pointer"
+                      aria-label="Remove line item"
+                      className="px-2.5 py-2 rounded-lg text-xs font-bold text-clinical-danger hover:bg-rose-50 transition cursor-pointer"
                     >
-                      Remove
+                      ✕
                     </button>
                   </div>
                 ))}
@@ -277,26 +331,51 @@ const GenerateInvoicePage = () => {
             </div>
           </div>
 
-          {/* Right Summary Card */}
-          <aside className="editorial-card p-6 border-cobalt/30 space-y-5 lg:sticky lg:top-24">
-            <span className="editorial-eyebrow">Invoice Summary Preview</span>
+          {/* Right Live Billing Preview Sidebar */}
+          <aside className="bg-surface rounded-2xl border border-hairline p-6 space-y-4 lg:sticky lg:top-24">
+            <div className="flex items-center justify-between">
+              <span className="editorial-eyebrow">Live Billing Preview</span>
+              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-clinical-success">
+                PDF READY
+              </span>
+            </div>
 
-            <div className="editorial-surface p-4 space-y-2.5 text-xs">
+            <div className="bg-canvas rounded-xl border border-hairline p-3.5 space-y-1">
+              <div className="font-display text-sm font-bold text-ink">
+                {selectedPatient
+                  ? `${selectedPatient.user?.first_name || ''} ${selectedPatient.user?.last_name || ''} • ${selectedPatient.patient_id}`
+                  : 'Select a Patient'}
+              </div>
+              <div className="text-xs text-muted">
+                {selectedToken
+                  ? `OPD Token ${selectedToken.token_code} • ${selectedToken.doctor_name}`
+                  : 'Standalone / Ward Invoice (No OPD Token Selected)'}
+              </div>
+            </div>
+
+            <div className="space-y-2.5 pb-3 border-b border-hairline text-xs">
               <div className="flex justify-between">
-                <span className="text-muted">Consultation / Ward Charges</span>
-                <span className="font-mono font-semibold text-cobalt">Auto-Calculated</span>
+                <span className="text-muted">OPD Consultation (Auto)</span>
+                <span className="font-mono font-semibold text-ink">
+                  {selectedToken ? `₹${estimatedOpdFee.toFixed(2)}` : 'Auto on backend'}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">Custom Line Items ({validItems.length})</span>
+                <span className="text-muted">Custom Procedures ({validItems.length} items)</span>
                 <span className="font-mono font-semibold text-ink">₹{extraSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Discount Applied</span>
                 <span className="font-mono font-semibold text-clinical-success">- ₹{discountVal.toFixed(2)}</span>
               </div>
-              <div className="border-t border-hairline pt-2.5 text-[11px] text-muted">
-                Backend automatically merges linked OPD doctor fee and active ward bed stay days + official PDF receipt.
-              </div>
+              <p className="text-[11px] text-muted pt-1">
+                Active inpatient ward stay charges (if admitted) are merged cleanly at generation time.
+              </p>
+            </div>
+
+            <div className="flex items-baseline justify-between">
+              <span className="font-display text-sm font-bold text-ink">Estimated Payable</span>
+              <span className="font-mono text-2xl font-bold text-cobalt">₹{estimatedTotal.toFixed(2)}</span>
             </div>
 
             <button
@@ -304,7 +383,7 @@ const GenerateInvoicePage = () => {
               disabled={submitting}
               className="w-full editorial-btn-primary py-3 text-sm"
             >
-              {submitting ? 'Generating Official Invoice...' : 'Create Invoice & Prepare PDF →'}
+              {submitting ? 'Generating Official Invoice...' : 'Generate Invoice & PDF Receipt →'}
             </button>
           </aside>
         </form>
